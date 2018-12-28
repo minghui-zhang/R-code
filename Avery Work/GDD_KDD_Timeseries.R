@@ -5,17 +5,17 @@ library(tidyverse)
 # get GDD, KDD and crop timing data ----------------------------------------------------------
 
 # GDD, KDD
-cerrado_timeseries <- read.csv('~/Documents/R code/Avery Work/Cerrado_GDD_KDD.csv')
+cerrado_timeseries <- read.csv('~/Documents/R-code/Avery Work/Cerrado_GDD_KDD.csv')
 
 # crop timing
 
-#specificPoly_data <- read.csv('~/Documents/R code/Crop Timing Visualization/FOI_stats.csv')
-#cropTiming_double_plant <- read.csv('~/Documents/R code/Crop Timing Visualization/double_plant_50km_MT.csv')
-#cropTiming_double_harvest <- read.csv('~/Documents/R code/Crop Timing Visualization/double_harvest_50km_MT.csv')
-#cropTiming_single_plant <- read.csv('~/Documents/R code/Crop Timing Visualization/single_plant_50km_MT.csv')
-#cropTiming_single_harvest <- read.csv('~/Documents/R code/Crop Timing Visualization/single_harvest_50km_MT.csv')
-cropTiming_double <- read.csv('~/Documents/R code/Crop Timing Visualization/double_50km_MT.csv') #just pasted plant and harvest csvs together
-cropTiming_single <- read.csv('~/Documents/R code/Crop Timing Visualization/single_50km_MT.csv')
+#specificPoly_data <- read.csv('~/Documents/R-code/Crop Timing Visualization/FOI_stats.csv')
+#cropTiming_double_plant <- read.csv('~/Documents/R-code/Crop Timing Visualization/double_plant_50km_MT.csv')
+#cropTiming_double_harvest <- read.csv('~/Documents/R-code/Crop Timing Visualization/double_harvest_50km_MT.csv')
+#cropTiming_single_plant <- read.csv('~/Documents/R-code/Crop Timing Visualization/single_plant_50km_MT.csv')
+#cropTiming_single_harvest <- read.csv('~/Documents/R-code/Crop Timing Visualization/single_harvest_50km_MT.csv')
+cropTiming_double <- read.csv('~/Documents/R-code/Crop Timing Visualization/double_50km_MT.csv') #just pasted plant and harvest csvs together
+cropTiming_single <- read.csv('~/Documents/R-code/Crop Timing Visualization/single_50km_MT.csv')
 
 # extract timeseries information from the GEE export
 

@@ -1,7 +1,7 @@
 # clean up Cofco data to get sum of indicators over each year and muni
 # indicators: FOB_USD and SOY_EQUIVALENT_TONNES
 
-cofco_raw <- read.csv('~/Documents/R code/Avery Work/Cofco_Raw.csv')
+cofco_raw <- read.csv('~/Documents/R-code/Avery Work/Cofco_Raw.csv')
 
 # empty vector to fill in with indicators
 
@@ -104,4 +104,4 @@ export_2016 <- data.frame(Year = Year_2016, Muni = munis_2016, FOB = FOB_2016, T
 export_2017 <- data.frame(Year = Year_2017, Muni = munis_2017, FOB = FOB_2017, TONS = TONS_2017)
 export_full = rbind(export_2014, export_2015, export_2016, export_2017)
 
-write.csv(export_full, file = "~/Documents/R code/Avery Work/Cofco_Cleaned.csv")
+write.csv(export_full, file = "~/Documents/R-code/Avery Work/Cofco_Cleaned.csv")

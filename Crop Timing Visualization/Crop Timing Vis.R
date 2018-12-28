@@ -4,13 +4,13 @@ library(viridis)
 
 # REDO FOR EVERY POLYGON
 
-specificPoly_data <- read.csv('~/Documents/R code/Crop Timing Visualization/FOI_stats.csv')
-mydata_double_plant <- read.csv('~/Documents/R code/Crop Timing Visualization/double_plant_50km_MT.csv')
-mydata_double_harvest <- read.csv('~/Documents/R code/Crop Timing Visualization/double_harvest_50km_MT.csv')
-mydata_single_plant <- read.csv('~/Documents/R code/Crop Timing Visualization/single_plant_50km_MT.csv')
-mydata_single_harvest <- read.csv('~/Documents/R code/Crop Timing Visualization/single_harvest_50km_MT.csv')
-mydata_double <- read.csv('~/Documents/R code/Crop Timing Visualization/double_50km_MT.csv') #just pasted plant and harvest csvs together
-mydata_single <- read.csv('~/Documents/R code/Crop Timing Visualization/single_50km_MT.csv')
+specificPoly_data <- read.csv('~/Documents/R-code/Crop Timing Visualization/FOI_stats.csv')
+mydata_double_plant <- read.csv('~/Documents/R-code/Crop Timing Visualization/double_plant_50km_MT.csv')
+mydata_double_harvest <- read.csv('~/Documents/R-code/Crop Timing Visualization/double_harvest_50km_MT.csv')
+mydata_single_plant <- read.csv('~/Documents/R-code/Crop Timing Visualization/single_plant_50km_MT.csv')
+mydata_single_harvest <- read.csv('~/Documents/R-code/Crop Timing Visualization/single_harvest_50km_MT.csv')
+mydata_double <- read.csv('~/Documents/R-code/Crop Timing Visualization/double_50km_MT.csv') #just pasted plant and harvest csvs together
+mydata_single <- read.csv('~/Documents/R-code/Crop Timing Visualization/single_50km_MT.csv')
 
 # DOUBLE PLANT AND HARVEST
 
