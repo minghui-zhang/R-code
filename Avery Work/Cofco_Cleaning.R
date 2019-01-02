@@ -4,6 +4,7 @@
 cofco_raw <- read.csv('~/Documents/R-code/Avery Work/Cofco_Raw.csv')
 
 # empty vector to fill in with indicators
+# will this be saved in Jupyter?
 
 FOB_2014 <- numeric(0)
 TONS_2014 <- numeric(0)
