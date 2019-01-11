@@ -34,9 +34,9 @@ library(ggplot2)
 library(ggridges)
 library(viridis)
 
-specificPoly_data <- read.csv('FOI_stats.csv')
-neighbors_double <- read.csv('double_50km_MT.csv') 
-neighbors_single <- read.csv('single_50km_MT.csv')
+specificPoly_data <- read.csv('input/FOI_stats.csv')
+neighbors_double <- read.csv('input/double_50km_MT.csv') 
+neighbors_single <- read.csv('input/single_50km_MT.csv')
 
 ```
 

@@ -203,7 +203,7 @@ fsoyp9$three <- fsoyp9$three/100
 #change column 3 name back to what it's supposed to be
 colnames(fsoyp9)[3] <- "2008-12-11"
 #Write final table to disk
-write.csv(fsoyp9, file='soy_plant_2009_muni.csv', row.names=FALSE)
+write.csv(fsoyp9, file='output/soy_plant_2009_muni.csv', row.names=FALSE)
 
 #2010 soy planting - setting as data frame - 1st file
 fsoyp10_1 <- as.data.frame(fsoyp10_1[2:nrow(fsoyp10_1), ], stringsAsFactors = FALSE)
@@ -332,7 +332,7 @@ fsoyp10_muni_1$`2009-11-26` <- fsoyp10_muni_1$`2009-11-26`/100
 fsoyp10_muni_1$`2009-12-03` <- fsoyp10_muni_1$`2009-12-03`/100
 
 #Write final table to disk
-write.csv(fsoyp10_muni_1, file='soy_plant_2010_muni.csv', row.names=FALSE)
+write.csv(fsoyp10_muni_1, file='output/soy_plant_2010_muni.csv', row.names=FALSE)
 
 #2010 soy planting - isolating regional summary table by removing unnecessary columns from 2nd file
 fsoyp10_2_re <- fsoyp10_2[-c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26
@@ -386,7 +386,7 @@ fsoyp10_2_re_1$'2009-12-03' <- fsoyp10_2_re_1$'2009-12-03'/100
 fsoyp10_2_re_1$'2008-12-04' <- fsoyp10_2_re_1$'2008-12-04'/100
 fsoyp10_2_re_1$'change_in_plant_per' <- fsoyp10_2_re_1$'change_in_plant_per'/100
 #Write final table to disk
-write.csv(fsoyp10_2_re_1, file='soy_plant_2010_region.csv', row.names=FALSE)
+write.csv(fsoyp10_2_re_1, file='output/soy_plant_2010_region.csv', row.names=FALSE)
 
 # Create individual data matrices for soy harvesting data
 # fsoyh9_1 <- do.call(rbind, outsoyh9_1)
