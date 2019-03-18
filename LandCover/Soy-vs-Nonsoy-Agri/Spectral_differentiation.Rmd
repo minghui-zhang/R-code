@@ -10,11 +10,11 @@ library(ggplot2)
 library(dplyr)
 library(lubridate)
 
-setwd("~/Documents/R-code/LandCover/Soy-vs-Nonsoy-Agri")
+#setwd("~/Documents/R-code/LandCover/Soy-vs-Nonsoy-Agri")
 agsat_raw <- read.csv("modis_table_agsat_partial.csv")
 plos_raw <- read.csv("modis_table_plos_partial.csv")
 
-year <- 2010
+year <- 2015
 
 ```
 
@@ -64,13 +64,14 @@ plos <- clean_raw_data(plos_raw, year)
 scatterplot <- function(band1, band2, band1_name, band2_name, year, data_frame, data_name) {
   plot <- ggplot(data = data_frame, aes(x = band1, y = band2, col = class)) +
                   geom_point(alpha = 0.5) +
-                  #facet_wrap(vars(month)) +
+                  facet_wrap(vars(month)) +
                   geom_smooth(method = "lm") +
-                  ggtitle(paste(band1, "vs", band2,"for", data_name, "year", year))
+                  ggtitle(paste(band1, "vs", band2,"for", data_name, "year", year)) +
+                  xlab(band1_name) + ylab(band2_name)
   return(plot)
 }
 
-print(scatterplot(agsat$sur_refl_b01, agsat$sur_refl_b02, 'band1', 'band2' ,2010, agsat, "agsat"))
+print(scatterplot(agsat$sur_refl_b01, agsat$sur_refl_b02, 'band1', 'band2' , year, agsat, "agsat"))
 
 ```
 
