@@ -13,8 +13,8 @@ library(reshape2)
 library(tidyr)
 
 #setwd("~/Documents/R-code/LandCover/Soy-vs-Nonsoy-Agri")
-agsat_raw <- read.csv("modis_table_agsat_partial.csv")
-plos_raw <- read.csv("modis_table_plos_partial.csv")
+agsat_raw <- read.csv("modis_table_agsat.csv")
+plos_raw <- read.csv("modis_table_plos.csv")
 
 year <- 2007
 ```
