@@ -29,9 +29,9 @@ theme_ed <- theme(
 dir_12 <- '~/Documents/R-code/tutorial/'
 
 # WORKING WITH SHP FILES
-
-cofco_shp <- readOGR(dsn = path.expand('~/Documents/R-code/Avery Work/shp/'), layer = 'Cofco_munis')
-brazilOutline_shp <- readOGR(dsn = path.expand('~/Documents/R-code/Avery Work/shp/'), layer = 'brazilOutline')
+# ~/Documents/R-code/Avery Work/input/shp/... or E:\\R-code\\Avery Work\\shp
+cofco_shp <- readOGR(dsn = path.expand('E:\\R-code\\Avery Work\\input\\shp'), layer = 'Cofco_munis')
+brazilOutline_shp <- readOGR(dsn = path.expand('E:\\R-code\\Avery Work\\input\\shp'), layer = 'brazilOutline')
 
 cofco_shp@data$id <- rownames(cofco_shp@data)
 cofco_df <- fortify(cofco_shp, region = 'id')
