@@ -1,0 +1,39 @@
+---
+title: "Bootstrapping"
+output: html_document
+---
+
+## Create land use cases
+
+```{r}
+
+# set up 50km x 50km cells, initialize with 10,000 'pixels'
+
+prop_agri = 0.09 # proportion of the cell that is agriculture. in 2004, it was 0.07; in 2014, it was 0.11. calculated by GEE file LandCover/MapbiomasAgriCover
+
+prop_SC = 15410/(15410 + 71581 + 3636) # proportion of training pts that are SC in 2007
+prop_DC = 71581/(15410 + 71581 + 3636) # proportion of training pts that are DC in 2007
+prop_nonsoy = 3636/(15410 + 71581 + 3636) # proportion of training pts that are nonsoy in 2007
+
+total_pixels = 50000*50000/(500*500) # total number of 500m pixels in 50km cell
+
+# calculate the number of each 
+SC_pixels = total_pixels*prop_agri*prop_SC
+DC_pixels = total_pixels*prop_agri*prop_DC
+nonsoy_pixels = total_pixels*prop_agri*prop_nonsoy
+
+# initial case
+initial_case = c(rep(0, SC_pixels), rep(1, DC_pixels), rep(2, nonsoy_pixels))
+
+# generate Two nested random choices: randomly choose the pixels whose land cover is 'falsely classified'; proportion is 100 - 59 % for SC (301/total SC pts become DC; 9/total SC pts become nonsoy agri); 100 - 86 % of DC must change (548/total DC pts becomes SC, 128/total DC pts becomes nonsoy agri); 100 - 66% of nonsoy agri must change (3/total nonsoy pts becomes SC; 53/total nonsoy pts becomes DC). total DC pts comes from confusion matrix.
+
+
+
+```
+
+## Create pixel level error distribution
+
+```{r}
+
+```
+
