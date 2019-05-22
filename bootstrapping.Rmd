@@ -18,12 +18,25 @@ prop_nonsoy = 3636/(15410 + 71581 + 3636) # proportion of training pts that are 
 total_pixels = 50000*50000/(500*500) # total number of 500m pixels in 50km cell
 
 # calculate the number of each 
+agri_pixels = total_pixels*prop_agri
 SC_pixels = total_pixels*prop_agri*prop_SC
 DC_pixels = total_pixels*prop_agri*prop_DC
 nonsoy_pixels = total_pixels*prop_agri*prop_nonsoy
 
-# initial case
-initial_case = c(rep(0, SC_pixels), rep(1, DC_pixels), rep(2, nonsoy_pixels))
+# actual case (this is 'known' based on the )
+actual_case = c(rep(0, SC_pixels), rep(1, DC_pixels), rep(2, nonsoy_pixels))
+
+# generate a classified case
+
+# start by calculating the indices of the falsely classified pixels, this can be used to index actual_case
+wrong_SC <- sample(1:SC_pixels, 0.41*SC_pixels, replace=F)
+wrong_DC <- sample((SC_pixels+1):(SC_pixels + DC_pixels), 0.14*DC_pixels, replace=F)
+wrong_nonsoy <- sample((SC_pixels+DC_pixels+1):length(actual_case), 0.34*nonsoy_pixels, replace=F)
+
+# of the falsely classified pixels, calculate the indices of the 'actual' classes
+wrong_SC_actual_DC = sample(wrong_SC, 0.5*length(wrong_SC), replace=F)
+wrong_SC_actual_nonsoy = unique(wrong_SC[! wrong_SC %in%  wrong_SC_actual_DC])
+
 
 # generate Two nested random choices: randomly choose the pixels whose land cover is 'falsely classified'; proportion is 100 - 59 % for SC (301/total SC pts become DC; 9/total SC pts become nonsoy agri); 100 - 86 % of DC must change (548/total DC pts becomes SC, 128/total DC pts becomes nonsoy agri); 100 - 66% of nonsoy agri must change (3/total nonsoy pts becomes SC; 53/total nonsoy pts becomes DC). total DC pts comes from confusion matrix.
 
@@ -31,9 +44,31 @@ initial_case = c(rep(0, SC_pixels), rep(1, DC_pixels), rep(2, nonsoy_pixels))
 
 ```
 
-## Create pixel level error distribution
+## Sample the pixel level error distribution
 
 ```{r}
+mean_plant = 0 # center on 0 since we're doing differences for land cover error anyway
+sd_plant = 10
+
+mean_harvest = 0
+sd_harvest = 5
+
+set.seed(124)
+pixel_plant <- rnorm(agri_pixels, mean_plant, sd_plant)
+pixel_harvest <-rnorm(agri_pixels, mean_harvest, sd_harvest)
 
 ```
 
+## Calculate median plant and harvest for the cell
+
+```{r}
+
+# for actual case
+median_plant_SC = median(pixel_plant[actual_case == 0])
+median_plant_DC = median(pixel_plant[actual_case == 1])
+median_plant_nonsoy = median(pixel_plant[actual_case == 2])
+median_plant_soy = median(pixel_plant[actual_case < 2])
+
+# for actual case
+
+```
