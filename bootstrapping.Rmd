@@ -19,9 +19,9 @@ total_pixels = 50000*50000/(500*500) # total number of 500m pixels in 50km cell
 
 # calculate the number of each 
 agri_pixels = total_pixels*prop_agri
-SC_pixels = total_pixels*prop_agri*prop_SC
-DC_pixels = total_pixels*prop_agri*prop_DC
-nonsoy_pixels = total_pixels*prop_agri*prop_nonsoy
+SC_pixels = round(total_pixels*prop_agri*prop_SC)
+DC_pixels = round(total_pixels*prop_agri*prop_DC)
+nonsoy_pixels = round(total_pixels*prop_agri*prop_nonsoy)
 
 # actual case (this is 'known' based on the )
 actual_case = c(rep(0, SC_pixels), rep(1, DC_pixels), rep(2, nonsoy_pixels))
@@ -33,13 +33,22 @@ wrong_SC <- sample(1:SC_pixels, 0.41*SC_pixels, replace=F)
 wrong_DC <- sample((SC_pixels+1):(SC_pixels + DC_pixels), 0.14*DC_pixels, replace=F)
 wrong_nonsoy <- sample((SC_pixels+DC_pixels+1):length(actual_case), 0.34*nonsoy_pixels, replace=F)
 
+# calculate proportion of wrongly calculated pixels that are 'actually' which class
+frac_wrong_SC_actual_DC = 301/(301+9)
+frac_wrong_DC_actual_SC = 548/(548 + 128)
+frac_wrong_nonsoy_actual_SC = 3/(3 + 53)
+
 # of the falsely classified pixels, calculate the indices of the 'actual' classes
-wrong_SC_actual_DC = sample(wrong_SC, 0.5*length(wrong_SC), replace=F)
+wrong_SC_actual_DC = sample(wrong_SC, frac_wrong_SC_actual_DC*length(wrong_SC), replace=F)
 wrong_SC_actual_nonsoy = unique(wrong_SC[! wrong_SC %in%  wrong_SC_actual_DC])
+wrong_DC_actual_SC = sample(wrong_DC, frac_wrong_DC_actual_SC*length(wrong_DC), replace = F)
+wrong_DC_actual_nonsoy = unique(wrong_DC[! wrong_DC %in%  wrong_DC_actual_SC])
+wrong_nonsoy_actual_SC = sample(wrong_nonsoy, frac_wrong_nonsoy_actual_SC*length(wrong_nonsoy), replace = F)
+wrong_nonsoy_actual_DC = unique(wrong_nonsoy[! wrong_nonsoy %in%  wrong_nonsoy_actual_SC])
 
+# for above, generate Two nested random choices: randomly choose the pixels whose land cover is 'falsely classified'; proportion is 100 - 59 % for SC (301/total wrongly predicted SC pts become DC; 9/total wrongly predicted SC pts become nonsoy agri); 100 - 86 % of DC must change (548/total wrongly predicted DC pts becomes SC, 128/total wrongly predicted DC pts becomes nonsoy agri); 100 - 66% of nonsoy agri must change (3/total wrongly predicted nonsoy pts becomes SC; 53/total wrongly predicted nonsoy pts becomes DC). total DC pts comes from confusion matrix.
 
-# generate Two nested random choices: randomly choose the pixels whose land cover is 'falsely classified'; proportion is 100 - 59 % for SC (301/total SC pts become DC; 9/total SC pts become nonsoy agri); 100 - 86 % of DC must change (548/total DC pts becomes SC, 128/total DC pts becomes nonsoy agri); 100 - 66% of nonsoy agri must change (3/total nonsoy pts becomes SC; 53/total nonsoy pts becomes DC). total DC pts comes from confusion matrix.
-
+# create one 'predicted/erroneous' set of pixels
 
 
 ```
