@@ -1,0 +1,133 @@
+---
+title: "timeseries-testing"
+output: html_document
+---
+
+## Read in timeseries and clean
+
+
+```{r}
+
+library(imputeTS)
+
+ts <- read.csv('point1.csv')[,1:3]
+colnames(ts) <- c('date', 'EVI_raw', 'EVI')
+ts$date <- as.Date(ts$date, '%d-%h-%y')
+ts$day <- as.numeric(ts$date - as.Date('2016-08-01')) # number of days
+ts$EVI <- na.interpolation(ts$EVI)
+
+year <- 2017
+year_start = year - 1
+year_end = year
+
+```
+
+## Harmonic fitting via Clinton method: DOESN'T ESTIMATE OMEGA. THIS SECTION IS WRONG
+
+```{r}
+library(HarmonicRegression)
+
+# find index of important dates, use to target specific parts of the year
+targeted_start_day <- as.numeric(as.Date('2016-10-01') - as.Date('2016-08-01'))
+targeted_end_day <- as.numeric(as.Date('2017-02-20') - as.Date('2016-08-01'))
+targeted_days <- which(ts$day >= targeted_start_day & ts$day <= targeted_end_day) # index of days to target
+
+EVI <- ts$EVI[targeted_days]
+t <- ts$day[targeted_days]
+
+model <- harmonic.regression(EVI, t/(2*3.14))
+plot(t, EVI)
+lines(t, EVI, col = "green")
+lines(t, model$fit.vals, col = "red")
+
+# get fitted parameters
+phi <- model$pars$phi # phase in radians
+
+# calculate peak and quarter period to compare to GEE estimate
+period <- 150 # THIS IS GUESSED
+peak_after_2016_08_01 <- period*(phi/(2*3.14)) #+ t[1] - as.numeric(as.Date('2016-08-01') - as.Date('2015-08-01'))
+print('peak after 2016-08-01, R harmonic, Clinton')
+print(peak_after_2016_08_01)
+
+a <- model$coeffs[2]
+b <- model$coeffs[3]
+
+w <- ((3.14/2) + atan(-a/b))/peak_after_2016_08_01
+quarter_period <- 3.14/(2*w)
+
+print('w')
+print(w)
+
+print('quarter period')
+print(quarter_period)
+
+```
+
+
+
+## Harmonic fitting to find peak and inflection point (via TIMESAT)
+
+```{r}
+
+# TARGET THE APPROPRIATE TIME PERIOD FOR FITTING
+# find index of important dates, use to target specific parts of the year
+targeted_start_day <- as.numeric(as.Date('2016-08-01') - as.Date('2016-08-01'))
+targeted_end_day <- as.numeric(as.Date('2017-08-01') - as.Date('2016-08-01'))
+targeted_days <- which(ts$day >= targeted_start_day & ts$day <= targeted_end_day) # index of days to target
+
+EVI <- ts$EVI[targeted_days]
+t <- ts$day[targeted_days]
+
+t_fitting <- t/(2*3.14)
+wt <- (6*3.14/length(t))*t/(2*3.14)
+
+# Model estimation and adding of the fitted values to the previous plot:
+model <- nls(EVI~c1 + c2*t_fitting + c3*(t_fitting^2) + c4*sin(w*t_fitting) + c5*cos(w*t_fitting) +
+               c6*sin(2*w*t_fitting) + c7*cos(2*w*t_fitting), #+ 
+               #c8*sin(3*w*t_fitting) + c9*cos(3*w*t_fitting), 
+             start = list(c1 = 0.5, c2 = 0, c3 = 0, 
+                          c4 = 1, c5 = 1, c6 = 1,
+                          c7 = 1, #c8 = 1, c9 = 1,
+                          w = 0.1
+                          ),
+             control = nls.control(maxiter = 500))
+
+plot(t, EVI)
+lines(t, EVI, col = "green")
+lines(t, fitted(model), col = "red")
+
+summary(model)
+
+# retreive omega from estimated coefficients
+omega <- summary(model)$parameters[8]
+quarter_period <- 3.14/(2*omega)
+
+print('quarter period')
+print(quarter_period)
+
+```
+
+
+## Finding omega: DON'T USE
+# https://stats.stackexchange.com/questions/60994/fit-a-sinusoidal-term-to-data
+
+```{r}
+
+ssp <- spectrum(EVI)  
+per <- 1/ssp$freq[ssp$spec==max(ssp$spec)]
+reslm <- lm(EVI ~ sin(1/per*t)+cos(1/per*t))
+summary(reslm)
+
+rg <- diff(range(EVI))
+plot(EVI~t,ylim=c(min(EVI)-0.1*rg,max(EVI)+0.1*rg))
+lines(fitted(reslm)~t,col=4,lty=2)   # dashed blue line is sin fit
+
+# including 2nd harmonic really improves the fit
+reslm2 <- lm(EVI ~ sin(1/per*t)+cos(1/per*t)+sin(2/per*t)+cos(2/per*t))
+summary(reslm2)
+lines(fitted(reslm2)~t,col=3)    # solid green line is periodic with second harmonic
+
+print('period')
+print(per)
+
+```
