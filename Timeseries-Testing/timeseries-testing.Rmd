@@ -165,7 +165,7 @@ minEVI_right <- min(fittedEVI_secondHalf)
 
 date_min = approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = minEVI_left)
 
-# find phenological dates
+# find phenological dates, need to interpolate linearly with approx
 startOfSeasonEVI <- 0.1*(maxEVI - minEVI_left) + minEVI_left
 endOfSeasonEVI <- 0.1*(maxEVI - minEVI_right) + minEVI_right
 

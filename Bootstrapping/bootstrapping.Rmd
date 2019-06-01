@@ -49,6 +49,159 @@ curve(dnorm(x, para_p1_y[1], para_p1_y[2]), col = 2, add = TRUE)
 
 ```
 
+## Numerically calculate timing error distribution
+
+```{r}
+library(fBasics) # for Heaviside fcn
+library(dplyr)
+
+# vectors of a and y over which to integrate, and vector of x over which to calculate p(x)
+as <- seq(-100, 100, 10)
+bs <- seq(-100, 100, 10)
+ys <- seq(0.1, 100, 10)
+xs <- seq(-50, 200, 10)
+
+# given value of a (upper bound), find p(a)
+p_a <- function(a, plant_or_harv) {
+  
+  if (plant_or_harv == 'plant') {
+    fitted_mean <- para_p1_upperBound[1]
+    fitted_sd <- para_p1_upperBound[2]
+  }
+  
+  else if (plant_or_harv == 'harvest') {
+    fitted_mean <- para_h1_upperBound[1]
+    fitted_sd <- para_h1_upperBound[2]
+  }
+  return(pnorm(a, mean = fitted_mean, sd = fitted_sd))
+}
+
+# given value of b (lower bound), find p(b)
+p_b <- function(b, plant_or_harv) {
+  
+  if (plant_or_harv == 'plant') {
+    fitted_mean <- para_p1_lowerBound[1]
+    fitted_sd <- para_p1_lowerBound[2]
+  }
+  
+  else if (plant_or_harv == 'harvest') {
+    fitted_mean <- para_h1_lowerBound[1]
+    fitted_sd <- para_h1_lowerBound[2]
+  }
+  return(pnorm(b, mean = fitted_mean, sd = fitted_sd))
+}
+
+# given value of y (b - a or lower bound - upper bound), find p(y)
+p_y <- function(y, plant_or_harv) {
+  
+  if (plant_or_harv == 'plant') {
+    fitted_mean <- para_p1_y[1]
+    fitted_sd <- para_p1_y[2]
+  }
+  
+  else if (plant_or_harv == 'harvest') {
+    fitted_mean <- para_h1_y[1]
+    fitted_sd <- para_h1_y[2]
+  }
+  return(pnorm(y, mean = fitted_mean, sd = fitted_sd))
+}
+
+# given value of x, return the value of the double integral
+calc_integral <- function(x, plant_or_harv, as, ys) {
+  
+  # initialize matrix to hold the argument of the integrals
+  num_as <- length(as)
+  num_ys <- length(ys)
+  result_matrix <- matrix(nrow = num_as, ncol = num_ys)
+  
+  for (a_index in 1:num_as) {
+    for (y_index in 1:num_ys) {
+      
+      a <- as[a_index]
+      y <- ys[y_index]
+      
+      prob_a <- p_a(a, plant_or_harv)
+      prob_y <- p_y(y, plant_or_harv)
+      
+      H_a <- Heaviside(x, a = a)
+      H_b <- Heaviside(x, a = (y + a))
+      result <- prob_a*prob_y*(H_a - H_b)/y
+      
+      result_matrix[a_index, y_index] <- result
+      
+    }
+  }
+  
+  return(sum(result_matrix))
+}
+
+# given value of x, return the value of the double integral. DOESN'T GIVE A RESULT THAT'S FITTABLE WITH NLS()
+calc_integral_2 <- function(x, plant_or_harv, as, bs) {
+  
+  # initialize matrix to hold the argument of the integrals
+  num_as <- length(as)
+  num_bs <- length(bs)
+  result_matrix <- matrix(nrow = num_as, ncol = num_bs)
+  
+  for (a_index in 1:num_as) {
+    for (b_index in 1:num_bs) {
+      
+      a <- as[a_index]
+      b <- bs[b_index]
+      
+      prob_a <- p_a(a, plant_or_harv)
+      prob_b <- p_b(b, plant_or_harv)
+      
+      H_a <- Heaviside(x, a = a)
+      H_b <- Heaviside(x, a = b)
+      result <- prob_a*prob_b*(H_a - H_b)/(b - a)
+      
+      result_matrix[a_index, b_index] <- result
+      
+    }
+  }
+  
+  return(sum(result_matrix))
+}
+
+# calculate p(x) - use either calc_integral or calc_integral_2
+#prob_x_plant <- sapply(xs, calc_integral_2, plant_or_harv = 'plant', as = as, bs = bs)
+#prob_x_harv <- sapply(xs, calc_integral_2, plant_or_harv = 'harvest', as = as, bs = bs)
+
+prob_x_plant <- sapply(xs, calc_integral, plant_or_harv = 'plant', as = as, ys = ys)
+prob_x_harv <- sapply(xs, calc_integral, plant_or_harv = 'harvest', as = as, ys = ys)
+
+
+# fit p(x) to its own distribution (mean and sd) using nls()
+
+
+plant_error_data <- data.frame(error=xs, density=prob_x_plant)
+res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=60,sigma=30,k=1) , data = plant_error_data,  control = nls.control(maxiter = 500))
+plant_error_params <- summary(res)$parameters[,"Estimate"]
+plant_error_mean <- plant_error_params[1]
+plant_error_sd <- plant_error_params[2]
+plant_error_scale <- plant_error_params[3]
+plot(xs, prob_x_plant, main = 'p(error) for planting', xlab = 'error', ylab = 'density')
+plot(function(x) plant_error_scale*exp(-1/2*(x-plant_error_mean)^2/plant_error_sd^2),col=2,add=T,xlim=range(plant_error_data$error))
+
+
+
+harvest_error_data <- data.frame(error=xs, density=prob_x_harv)
+res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=60,sigma=30,k=1) , data = harvest_error_data,  control = nls.control(maxiter = 500))
+harvest_error_params <- summary(res)$parameters[,"Estimate"]
+harvest_error_mean <- harvest_error_params[1]
+harvest_error_sd <- harvest_error_params[2]
+harvest_error_scale <- harvest_error_params[3]
+plot(xs, prob_x_harv, main = 'p(error) for harvest', xlab = 'error', ylab = 'density')
+plot(function(x) harvest_error_scale*exp(-1/2*(x-harvest_error_mean)^2/harvest_error_sd^2),col=2,add=T,xlim=range(plant_error_data$error))
+
+print(c('plant error mean', plant_error_mean))
+print(c('plant error sd', plant_error_sd))
+
+print(c('harvest error mean', harvest_error_mean))
+print(c('harvest error sd', harvest_error_sd))
+
+```
 ## Create land use cases
 
 ```{r}
@@ -69,7 +222,7 @@ SC_pixels = round(total_pixels*prop_agri*prop_SC)
 DC_pixels = round(total_pixels*prop_agri*prop_DC)
 nonsoy_pixels = round(total_pixels*prop_agri*prop_nonsoy)
 
-# actual case (this is 'known' based on the )
+# actual case (this is 'known' based on the ladn cover dataset)
 actual_case = c(rep(0, SC_pixels), rep(1, DC_pixels), rep(2, nonsoy_pixels))
 
 # generate a classified case
@@ -95,35 +248,80 @@ wrong_nonsoy_actual_DC = unique(wrong_nonsoy[! wrong_nonsoy %in%  wrong_nonsoy_a
 # for above, generate Two nested random choices: randomly choose the pixels whose land cover is 'falsely classified'; proportion is 100 - 59 % for SC (301/total wrongly predicted SC pts become DC; 9/total wrongly predicted SC pts become nonsoy agri); 100 - 86 % of DC must change (548/total wrongly predicted DC pts becomes SC, 128/total wrongly predicted DC pts becomes nonsoy agri); 100 - 66% of nonsoy agri must change (3/total wrongly predicted nonsoy pts becomes SC; 53/total wrongly predicted nonsoy pts becomes DC). total DC pts comes from confusion matrix.
 
 # create one 'predicted/erroneous' set of pixels
+classified_case <- actual_case # start with classified case = actual case, then replace the erroneous pixels
+
+
+classified_case[wrong_SC_actual_DC] <- 1
+classified_case[wrong_SC_actual_nonsoy] <- 2
+classified_case[wrong_DC_actual_SC] <- 0
+classified_case[wrong_DC_actual_nonsoy] <- 2
+classified_case[wrong_nonsoy_actual_SC] <- 0
+classified_case[wrong_nonsoy_actual_DC] <- 1
 
 
 ```
 
-## Sample the pixel level error distribution
+## Calculate errors due to land cover classification
 
 ```{r}
-mean_plant = 0 # center on 0 since we're doing differences for land cover error anyway
-sd_plant = 10
 
-mean_harvest = 0
-sd_harvest = 5
 
 set.seed(124)
-pixel_plant <- rnorm(agri_pixels, mean_plant, sd_plant)
-pixel_harvest <-rnorm(agri_pixels, mean_harvest, sd_harvest)
 
-```
+# given a land cover and plant/harvest, randomly generate planting and harvest pixel-level errors and take the median to simulate the error at 50km scale
+calc_median_date <- function(agri_pixels, land_cover, plant_or_harv) {
+  if (plant_or_harv == 'plant') {
+    error_mean <- plant_error_mean
+    error_sd <- plant_error_sd
+  }
+  
+  else if (plant_or_harv == 'harvest') {
+    error_mean <- harvest_error_mean
+    error_sd <- harvest_error_sd
+  }
+  
+  pixel_errors <- rnorm(agri_pixels, error_mean, error_sd)
+  SC_median_error <- pixel_errors[land_cover == 0] %>% median
+  DC_median_error <- pixel_errors[land_cover == 1] %>% median
+  soy_median_error <- pixel_errors[land_cover <= 1] %>% median
+  
+  median_errors <- c(SC_median_error, DC_median_error, soy_median_error)
+  names(median_errors) <- c('SC', 'DC', 'soy')
+  
+  return(median_errors)
+}
 
-## Calculate median plant and harvest for the cell
+# given the number of sims to do, calculate median timing for actual and classified land covers
 
-```{r}
+calc_land_cover_error <- function(nsims, agri_pixels, actual_case, classified_case, plant_or_harv) {
+  SC_diffs <- numeric(nsims)
+  DC_diffs <- numeric(nsims)
+  soy_diffs <- numeric(nsims)
+  
+  for (sim in 1:nsims) {
+    actual_medians <- calc_median_date(agri_pixels, actual_case, plant_or_harv)
+    classified_medians <- calc_median_date(agri_pixels, actual_case, plant_or_harv)
+    
+    SC_diffs[sim] <- actual_medians['SC'] - classified_medians['SC']
+    DC_diffs[sim] <- actual_medians['DC'] - classified_medians['DC']
+    soy_diffs[sim] <- actual_medians['soy'] - classified_medians['soy']
+  }
+  
+  diffs <- data.frame(SC = SC_diffs, DC = DC_diffs, soy = soy_diffs)
+  
+  return(diffs)
+}
 
-# for actual case
-median_plant_SC = median(pixel_plant[actual_case == 0])
-median_plant_DC = median(pixel_plant[actual_case == 1])
-median_plant_nonsoy = median(pixel_plant[actual_case == 2])
-median_plant_soy = median(pixel_plant[actual_case < 2])
+# calculate difference in median dates between the two cases
+harvest_lc_error <- calc_land_cover_error(100, agri_pixels, actual_case, classified_case, 'harvest')
+plant_lc_error <- calc_land_cover_error(100, agri_pixels, actual_case, classified_case, 'plant')
 
-# for actual case
+hist(plant_lc_error$SC, main = 'SC plant lc error')
+hist(plant_lc_error$DC, main = 'DC plant lc error')
+hist(plant_lc_error$soy, main = 'soy plant lc error')
+
+hist(harvest_lc_error$SC, main = 'SC harvest lc error')
+hist(harvest_lc_error$DC, main = 'DC harvest lc error')
+hist(harvest_lc_error$soy, main = 'soy harvest lc error')
 
 ```
