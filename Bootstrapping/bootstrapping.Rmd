@@ -3,7 +3,7 @@ title: "Bootstrapping"
 output: html_document
 ---
 
-## Read and clean pixel level range errors from Planet validation data
+## Read and summarize pixel level range errors from Planet validation data
 
 ```{r}
 
@@ -14,7 +14,6 @@ h1_errors <- read.csv('h1_error_toBootstrap.csv')
 
 p1_y <- p1_errors$p1_lowerBoundError - p1_errors$p1_upperBoundError
 h1_y <- h1_errors$h1_lowerBoundError - h1_errors$h1_upperBoundError
-
 
 # fit to normal distribution and plot
 fit_p1_lowerBound <- fitdistr(p1_errors$p1_lowerBoundError, "normal")
@@ -313,8 +312,8 @@ calc_land_cover_error <- function(nsims, agri_pixels, actual_case, classified_ca
 }
 
 # calculate difference in median dates between the two cases
-harvest_lc_error <- calc_land_cover_error(100, agri_pixels, actual_case, classified_case, 'harvest')
-plant_lc_error <- calc_land_cover_error(100, agri_pixels, actual_case, classified_case, 'plant')
+harvest_lc_error <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'harvest')
+plant_lc_error <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'plant')
 
 hist(plant_lc_error$SC, main = 'SC plant lc error')
 hist(plant_lc_error$DC, main = 'DC plant lc error')
