@@ -46,9 +46,9 @@ window_EVI_2 <- 20 # days
 window_dEVI <- 40 # days
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('test_point3.csv')[,1:4]
+ts <- read.csv('test_point6.csv')[,1:2]
 
-colnames(ts) <- c('date', 'EVI_raw', 'EVI_smoothed', 'firstDeriv')
+colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
 ts$day <- as.numeric(ts$date - as.Date('2016-08-01')) # number of days
 
@@ -91,35 +91,78 @@ EVI_smoothed2 <- smooth_by_days(window_EVI_2, t, EVI_smoothed1)
 
 # confirm that my smoothed version (blue points) matches 
 plot(t, EVI_raw)
-points(t, EVI_smoothed1, col = 'red')
-points(t, ts$EVI_smoothed, col = 'blue')
+points(t, EVI_smoothed2, col = 'red')
+points(t, ts$EVI_smoothed2, col = 'blue')
 
-# calculate first derivative of smoothed EVI (forward 1st order difference) - test with test_point3.csv
+# calculate first derivative of smoothed EVI (forward 1st order difference)
 
 calc_1st_deriv <- function(values) {
   
   derivatives <- numeric(length(values))
   
-  for (index in 2:length(values)) {
-    
-    derivative <- values[index] - values[index - 1]
+  for (index in 1:(length(values)-1)) {
+
+    derivative <- values[index + 1] - values[index]
+
     derivatives[index] <- derivative
   }
   
-  derivatives[0] <- derivatives[1] # to make sure the 1st derivative length still matches total time
+  derivatives[length(values)] <- derivatives[length(values) - 1] # to make sure the 1st derivative length still matches total time
   
   return(derivatives)
 }
 
 dEVI <- calc_1st_deriv(unique(EVI_smoothed2))
 
+#plot(t, ts$firstDeriv_unsmoothed, main = 'derivative, unsmoothed')
+#points(unique(t), dEVI, col = 'red')
 
-plot(t, ts$firstDeriv, main = 'derivative, unsmoothed')
-points(unique(t), dEVI, col = 'red')
+# calculate smoothed dEVI
+dEVI_smoothed <- smooth_by_days(window_dEVI, unique(t), dEVI)
 
-# TEMPORARY: add calculated dEVI and EVI_smoothed2 to ts dataframe to compare
-ts$R_EVI_smoothed2 <- EVI_smoothed2
-ts$R_dEVI <- dEVI
+#plot(t, ts$firstDeriv_smoothed, main = 'derivative, smoothed')
+#points(unique(t), dEVI_smoothed, col = 'red')
+
+# save R-calculated timeseries
+ts_R <- data.frame(t, dEVI = rep(dEVI, each = 2), dEVI_smoothed = rep(dEVI_smoothed, each = 2), EVI_smoothed1, EVI_smoothed2, EVI_raw)
+
+# apply peak cutoff date (April 1), find max EVI for first crop
+peakCutoffDay <- as.numeric(as.Date('2017-04-01') - as.Date('2016-08-01')) # number of days between cutoff day and Aug 1
+ts_firstCrop_R <- ts_R[which(ts_R$t <= peakCutoffDay), ]
+
+# numerically find date of maxEVI and max dEVI (after smoothing)
+maxEVIday <- ts_firstCrop_R$t[which(ts_firstCrop_R$EVI_smoothed2 == max(ts_firstCrop_R$EVI_smoothed2))][1]
+maxdEVIday <- ts_firstCrop_R$t[which(ts_firstCrop_R$dEVI_smoothed == max(ts_firstCrop_R$dEVI_smoothed))][1]
+
+quarterPd <- maxEVIday - maxdEVIday
+
+# get window over which to fit
+windowStart <- maxEVIday - 2*quarterPd
+windowEnd <- maxEVIday + quarterPd
+ts_firstCropFitting_R <- ts_firstCrop_R[which(ts_firstCrop_R$t >= windowStart & ts_firstCrop_R$t <= windowEnd),]
+
+freq_invYrs <- 1/(4*(quarterPd/365)) # omega
+
+# fit over first crop. benchmark to Aug 1
+t_yrs <- (ts_firstCropFitting_R$t)/365
+wt <- 2*3.14*freq_invYrs*t_yrs
+EVI_fitting <- ts_firstCropFitting_R$EVI_smoothed2
+
+# Model that sets w (as in TIMESAT)
+model_GEE_harmonic <- lm(EVI_fitting~ t_yrs + cos(wt) + sin(wt))
+
+plot(t_yrs, EVI_fitting)
+lines(t_yrs, EVI_fitting, col = "green")
+lines(t_yrs, fitted(model_GEE_harmonic), col = "red")
+
+# calculate fitted maximum day. NOTE, the fitted phi doesn't always match with GEE fitted phi... GEE's phi is usually around +2 or -3
+b2 <- model_GEE_harmonic$coefficients[3]
+b3 <- model_GEE_harmonic$coefficients[4]
+phi <- (atan(b3/b2))
+
+# the phase when calculated from the day the harmonic function started fitting (windowStart)
+maxEVIday_fromAug1 <- 365*phi/(2*3.14*freq_invYrs)
+if (maxEVIday_fromAug1 < 0) {maxEVIday_fromAug1 <- maxEVIday_fromAug1 + 365/freq_invYrs}
 
 ```
 
