@@ -89,6 +89,7 @@ calc_1st_deriv <- function(values) {
 ```{r}
 
 library(dplyr)
+library(zoo)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
 ts <- read.csv('point1.csv')[,1:2]
@@ -101,8 +102,12 @@ ts$day <- as.numeric(ts$date - as.Date('2016-08-01')) # number of days
 # given: fitting degree (window size for smoothing EVI (2) and dEVI); timeseries as df, columns of date and raw EVI; number of points to take out randomly
 # returns: quarter period and peak date
 
-R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMissingPts) {
+#R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMissingPts) {
   
+window_EVI_1 <- 0
+window_EVI_2 <- 0
+window_dEVI <- 0
+numMissingPts <- 10
   # cut EVI to only Aug 1, 2016 to April 1, 2017
   ts <- ts[ts$day >= 0 & ts$day <= 243,]
   
@@ -118,9 +123,6 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   
   points(ts$day, ts$EVI_raw, col = 'red')
   
-  print('remaining ts')
-  print(ts)
-  
   EVI_raw <- ts$EVI_raw
   t <- ts$day
   
@@ -128,52 +130,47 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   EVI_smoothed1 <- smooth_by_days(window_EVI_1, t, EVI_raw)
   EVI_smoothed2 <- smooth_by_days(window_EVI_2, t, EVI_smoothed1)
   
-  print('length EVI_smoothed1')
-  print(length(EVI_smoothed1))
-  print('length EVI_smoothed2')
-  print(length(EVI_smoothed2))
+  # clean up EVI_smoothed2. for every date, replace with mean of the 2 EVI points and linearly interpolate at NaN times
+  ts_R <- data.frame(t, EVI_smoothed2)
+  ts_R <- ts_R %>% group_by(t) %>%
+          summarise_at(vars(EVI_smoothed2), mean)
+  
+  # from here, the data won't be doubled on each date!
+  EVI_smoothed2 <- na.approx(ts_R$EVI_smoothed2, na.rm = FALSE)
+  t <- ts_R$t
 
-  dEVI <- calc_1st_deriv(unique(EVI_smoothed2))
+  dEVI <- calc_1st_deriv(EVI_smoothed2)
+  ts_R$dEVI <- dEVI
 
   # calculate smoothed dEVI
-  dEVI_smoothed <- smooth_by_days(window_dEVI, unique(t), dEVI)
-  
-  print('length dEVI')
-  print(length(dEVI))
-  print('length dEVI_smoothed')
-  print(length(dEVI_smoothed))
-  
-  # save R-calculated timeseries
-  ts_R <- data.frame(t, dEVI = rep(dEVI, each = 2), dEVI_smoothed = rep(dEVI_smoothed, each = 2), EVI_smoothed1, EVI_smoothed2, EVI_raw)
-  
-  # apply peak cutoff date (April 1), find max EVI for first crop
-  peakCutoffDay <- as.numeric(as.Date('2017-04-01') - as.Date('2016-08-01')) # number of days between cutoff day and Aug 1
-  ts_firstCrop_R <- ts_R[which(ts_R$t <= peakCutoffDay), ]
+  dEVI_smoothed <- smooth_by_days(window_dEVI, t, dEVI)
+  ts_R$dEVI_smoothed <- dEVI_smoothed
+
   
   # numerically find date of maxEVI and max dEVI (after smoothing)
-  maxEVIday <- ts_firstCrop_R$t[which(ts_firstCrop_R$EVI_smoothed2 == max(ts_firstCrop_R$EVI_smoothed2))][1]
-  maxdEVIday <- ts_firstCrop_R$t[which(ts_firstCrop_R$dEVI_smoothed == max(ts_firstCrop_R$dEVI_smoothed))][1]
+  maxEVIday <- ts_R$t[which(ts_R$EVI_smoothed2 == max(ts_R$EVI_smoothed2, na.rm = TRUE))][1]
+  maxdEVIday <- ts_R$t[which(ts_R$dEVI_smoothed == max(ts_R$dEVI_smoothed, na.rm = TRUE))][1]
   
   quarterPd <- maxEVIday - maxdEVIday
   
   # get window over which to fit
   windowStart <- maxEVIday - 2*quarterPd
   windowEnd <- maxEVIday + quarterPd
-  ts_firstCropFitting_R <- ts_firstCrop_R[which(ts_firstCrop_R$t >= windowStart & ts_firstCrop_R$t <= windowEnd),]
+  ts_fitting_R <- ts_R[which(ts_R$t >= windowStart & ts_R$t <= windowEnd),]
   
   freq_invYrs <- 1/(4*(quarterPd/365)) # omega
   
   # fit over first crop. benchmark to Aug 1
-  t_yrs <- (ts_firstCropFitting_R$t)/365
+  t_yrs <- (ts_fitting_R$t)/365
   wt <- 2*3.14*freq_invYrs*t_yrs
-  EVI_fitting <- ts_firstCropFitting_R$EVI_smoothed2
+  EVI_fitting <- ts_fitting_R$EVI_smoothed2
   
   # Model that sets w (as in TIMESAT)
   model_GEE_harmonic <- lm(EVI_fitting~ t_yrs + cos(wt) + sin(wt))
-  
-  plot(ts_firstCropFitting_R$t, EVI_fitting)
-  lines(ts_firstCropFitting_R$t, EVI_fitting, col = "green")
-  lines(ts_firstCropFitting_R$t, fitted(model_GEE_harmonic), col = "red")
+
+  plot(ts_fitting_R$t, EVI_fitting)
+  lines(ts_fitting_R$t, EVI_fitting, col = "green")
+  lines(ts_fitting_R$t, fitted(model_GEE_harmonic), col = "red")
   
   # calculate fitted maximum day. NOTE, the fitted phi doesn't always match with GEE fitted phi... GEE's phi is usually around +2 or -3
   b2 <- model_GEE_harmonic$coefficients[3]
@@ -187,10 +184,10 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   results <- c(maxEVIday, quarterPd, maxEVIday_fitted)
   names(results) <- c('maxEVIday_numeric', 'quarterPd', 'maxEVIday_fitted')
   
-  return(results)
-}
+#  return(results)
+#}
 
-GEE_results <- R_GEE_algorithm(ts, 10, 10, 0, 8)
+#GEE_results <- R_GEE_algorithm(ts, 10, 10, 0, 0)
 ```
 ## My GEE algorithm
 
