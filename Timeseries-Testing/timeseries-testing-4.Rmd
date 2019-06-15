@@ -297,7 +297,6 @@ TIMESAT_SG_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissingPts, 
     EVI_smoothed2[which(is.na(EVI_smoothed2))] <- mean(EVI_smoothed2, na.rm = TRUE)
     }
 
-  
   ts_R$EVI_smoothed2 <- EVI_smoothed2
   t <- ts_R$t
   
@@ -347,13 +346,6 @@ TIMESAT_SG_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissingPts, 
   
   return(results)
 }
-
-print(TIMESAT_SG_algorithm(ts, 20, 20, 16, 40, 140, 130, 240))
-```
-
-
-
-```{r}
 
 # takes elimPoints, the vector of number of points to eliminate, and numRuns, the number of runs to do per number of points eliminated
 run_SG_algorithm <- function(ts, numRuns, elimPoints, window_EVI_1, window_EVI_2, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY) {
@@ -429,87 +421,191 @@ test_smoothing_SG(ts, 50, c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), c(0, 0, 20), c(0, 20
 
 ```{r}
 
-# TARGET THE APPROPRIATE TIME PERIOD FOR FITTING
-# find index of important dates, use to target specific parts of the year
-targeted_start_day <- as.numeric(as.Date('2016-10-01') - as.Date('2016-08-01'))
-targeted_end_day <- as.numeric(as.Date('2017-07-01') - as.Date('2016-08-01'))
-targeted_days <- which(ts$day >= targeted_start_day & ts$day <= targeted_end_day) # index of days to target
+# harmonic fitting function (estimates omega)
+# given: fitting degree (window size for smoothing EVI; timeseries as df, columns of date and raw EVI; number of points to take out randomly; the DOY from Aug 1 of the windows over which can find the rising and falling limbs of the first crop
+# returns: quarter period and peak date
+# the fittingStartDay and fittingEndDay are the windows over which to fit harmonic function; make sure they cover the peak(s) but not the dry season
 
-EVI <- ts$EVI[targeted_days]
-t <- ts$day[targeted_days]
+#risingLimb_start_DOY <- 50
+#risingLimb_end_DOY <- 120
+#fallingLimb_start_DOY <- 120
+#fallingLimb_end_DOY <- 190 
+#window_EVI_1 <- 0
+#window_EVI_2 <- 0
+#numMissingPts <- 8
+#fittingStartDay <- '2016-10-01'
+#fittingEndDay <- '2017-07-01'
 
-t_fitting <- t/(2*3.14)
+harmonic_nls_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissingPts, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY, fittingStartDay, fittingEndDay) {
+  
+  # cut EVI to only Aug 1, 2016 to July 31, 2017
+  targeted_start_day <- as.numeric(as.Date(fittingStartDay) - as.Date('2016-08-01'))
+  targeted_end_day <- as.numeric(as.Date(fittingEndDay) - as.Date('2016-08-01'))
+  targeted_days <- which(ts$day >= targeted_start_day & ts$day <= targeted_end_day) # index of days to target
+  
+  ts <- ts[targeted_days,]
+  
+  # cut out randomly selected missing dates; first make sure the points are sampled from days that have data
+  missing_days <- sample(unique(ts[complete.cases(ts),]$day), numMissingPts, replace = F) # days to take out
+  ts$EVI_raw[ts$day %in% missing_days] <- NA # replace the randomly selected dates' EVI_raw with 'NA'
 
-# Model that estimates w
-model_nls1 <- nls(EVI~c1 + c2*t_fitting + c3*(t_fitting^2) + c4*sin(w*t_fitting) + c5*cos(w*t_fitting) +
-               c6*sin(2*w*t_fitting) + c7*cos(2*w*t_fitting), #+ 
-               #c8*sin(3*w*t_fitting) + c9*cos(3*w*t_fitting), 
+  EVI_raw <- ts$EVI_raw
+  t <- ts$day
+  
+  # smooth EVI series by 20 days, then 20 days
+  EVI_smoothed1 <- smooth_by_days(window_EVI_1, t, EVI_raw)
+  EVI_smoothed2 <- smooth_by_days(window_EVI_2, t, EVI_smoothed1)
+  
+  # clean up EVI_smoothed2. for every date, replace with mean of the 2 EVI points and linearly interpolate at NaN times
+  ts_R <- data.frame(t, EVI_smoothed2)
+  ts_R <- ts_R %>% group_by(t) %>%
+          summarise_at(vars(EVI_smoothed2), mean)
+
+  # from here, the data won't be doubled on each date!
+  EVI_smoothed2 <- na.approx(ts_R$EVI_smoothed2, na.rm = FALSE)
+  # there may still be NA's at tails of EVI_smoothed2. replace these with the nearest non-NA or the average if have multiple NA's
+  NA_location <- which(is.na(EVI_smoothed2))
+  if (length(NA_location) == 1) { # if there is an NA in EVI_smoothed2, replace it with nearest value
+    if (NA_location == 1) {EVI_smoothed2[1] <- EVI_smoothed2[2]}
+    else if ( NA_location == length(EVI_smoothed2)) {EVI_smoothed2[length(EVI_smoothed2)] <- EVI_smoothed2[length(EVI_smoothed2) - 1]}
+  }
+  
+  if (length(NA_location) > 1) {
+    EVI_smoothed2[which(is.na(EVI_smoothed2))] <- mean(EVI_smoothed2, na.rm = TRUE)
+    }
+
+  ts_R$EVI_smoothed2 <- EVI_smoothed2
+  
+  # harmonic fitting
+  t_fitting <- ts_R$t/(2*3.14)
+  
+  #plot(t_fitting, EVI_smoothed2)
+  #lines(t_fitting, EVI_smoothed2, col = "green")
+    
+  # Model that estimates w
+  model_nls1 <- nls(EVI_smoothed2~c1 + c2*t_fitting + c3*(t_fitting^2) + c4*sin(w*t_fitting) + c5*cos(w*t_fitting) +
+               c6*sin(2*w*t_fitting) + c7*cos(2*w*t_fitting), 
              start = list(c1 = 0.5, c2 = 0, c3 = 0, 
                           c4 = 1, c5 = 1, c6 = 1,
-                          c7 = 1, #c8 = 1, c9 = 1,
-                          w = 0.15
+                          c7 = 1, w = 0.15
                           ),
-             control = nls.control(maxiter = 500))
+             control = nls.control(maxiter = 2000, minFactor = 1e-5))
 
-plot(t, EVI)
-lines(t, EVI, col = "green")
-lines(t, fitted(model_nls1), col = "red")
+  #lines(t_fitting, fitted(model_nls1), col = "red")
+  
+  # retreive omega from estimated coefficients
+  omega <- summary(model_nls1)$parameters[8]
+  quarter_period <- 3.14/(2*omega)
+  period <- 2*3.14/omega
+  
+  # find phenological dates, first make sure the dates found are for first crop, first or second half
+  firstHalf_dates <- which(ts_R$t >= risingLimb_start_DOY & ts_R$t <= risingLimb_end_DOY) # rising limb of first crop
+  t_firstHalf <- ts_R$t[firstHalf_dates]
+  fittedEVI_firstHalf <- fitted(model_nls1)[firstHalf_dates]
+  
+  secondHalf_dates <- which(ts_R$t >= fallingLimb_start_DOY & ts_R$t <= fallingLimb_end_DOY) # falling limb of first crop
+  t_secondHalf <- ts_R$t[secondHalf_dates]
+  fittedEVI_secondHalf <- fitted(model_nls1)[secondHalf_dates]
+  
+  firstCrop_dates <- which(ts_R$t >= risingLimb_start_DOY & ts_R$t <= fallingLimb_end_DOY) # first crop
+  t_firstCrop <- ts_R$t[firstCrop_dates]
+  fittedEVI_firstCrop <- fitted(model_nls1)[firstCrop_dates]
+  
+  # date and value of max EVI
+  maxEVI <- max(fittedEVI_firstCrop, na.rm = TRUE)
+  minEVI_left <- min(fittedEVI_firstHalf, na.rm = TRUE)
+  minEVI_right <- min(fittedEVI_secondHalf, na.rm = TRUE)
+  
+  date_min = approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = minEVI_left)$y
+  
+  # find phenological dates
+  rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
+  leftOfPeakEVI <- 0.9*(maxEVI - minEVI_right) + minEVI_right
 
-# retreive omega from estimated coefficients
-omega <- summary(model_nls1)$parameters[8]
-quarter_period <- 3.14/(2*omega)
-period <- 2*3.14/omega
+  date_rightOfPeak <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = rightOfPeakEVI)$y
+  date_leftOfPeak <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = leftOfPeakEVI)$y
+  
+  if (is.na(date_rightOfPeak)) {date_rightOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
+  if (is.na(date_leftOfPeak)) {date_leftOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
 
-# find phenological dates, first make sure the dates found are for first crop, first or second half
-firstHalf_dates <- which(t >= 40 & t <= 160) # rising limb of first crop
-t_firstHalf <- t[firstHalf_dates]
-fittedEVI_firstHalf <- fitted(model_nls1)[firstHalf_dates]
+  midSeason <- mean(c(date_rightOfPeak, date_leftOfPeak))
+  quarter_period_comparable <- (midSeason - date_min)/2
+  
+  results <- c(midSeason, quarter_period_comparable)
+  names(results) <- c('midSeason', 'quarterPd_comparable')
+  
+  return(results)
+}
 
-secondHalf_dates <- which(t >= 140 & t <= 220) # falling limb of first crop
-t_secondHalf <- t[secondHalf_dates]
-fittedEVI_secondHalf <- fitted(model_nls1)[secondHalf_dates]
 
-firstCrop_dates <- which(t >= 40 & t <= 220) # first crop
-t_firstCrop <- t[firstCrop_dates]
-fittedEVI_firstCrop <- fitted(model_nls1)[firstCrop_dates]
+#print(harmonic_nls_algorithm(ts, 10, 20, 0, 40, 140, 130, 240, '2016-10-01', '2017-07-01'))
 
-# date and value of max EVI
-maxEVI <- max(fittedEVI_firstCrop)
-minEVI_left <- min(fittedEVI_firstHalf)
-minEVI_right <- min(fittedEVI_secondHalf)
+# takes elimPoints, the vector of number of points to eliminate, and numRuns, the number of runs to do per number of points eliminated
+run_harmonic_nls_algorithm <- function(ts, numRuns, elimPoints, window_EVI_1, window_EVI_2, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY, fittingStartDay, fittingEndDay) {
 
-date_min = approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = minEVI_left)
+  # to hold results
+  peak_results <- matrix(nrow = numRuns, ncol = length(elimPoints))
+  quarterPd_results <- matrix(nrow = numRuns, ncol = length(elimPoints))
+  
+  # run with appropriate number of missing points
+  for (numMissingPts_index in 1:length(elimPoints)) {
+    for (runIndex in 1:numRuns) {
+      
+      numMissingPts <- elimPoints[numMissingPts_index]
+      result <- harmonic_nls_algorithm(ts, window_EVI_1, window_EVI_2, numMissingPts, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY, fittingStartDay, fittingEndDay)
+      
+      peak_results[runIndex, numMissingPts_index] <- result['midSeason']
+      quarterPd_results[runIndex, numMissingPts_index] <- result['quarterPd_comparable']
+    }
+  }
+  
+  peak_means <- colMeans(peak_results, na.rm = TRUE)
+  peak_sd <- apply(peak_results, 2, sd)
+  
+  quarterPd_means <- colMeans(quarterPd_results, na.rm = TRUE)
+  quarterPd_sd <- apply(quarterPd_results, 2, sd, na.rm = TRUE)
+  
+  # combine stats into named matrix
+  results <- matrix(c(peak_means, peak_sd, quarterPd_means, quarterPd_sd), ncol = length(elimPoints), byrow = TRUE)
+  rownames(results) <- c('peak_mean', 'peak_sd', 'quarterPd_mean', 'quarterPd_sd')
+  colnames(results) <- elimPoints
+  
+  return(results)
+}
 
-# find phenological dates
-startOfSeasonEVI <- 0.1*(maxEVI - minEVI_left) + minEVI_left
-endOfSeasonEVI <- 0.1*(maxEVI - minEVI_right) + minEVI_right
+#print(run_harmonic_nls_algorithm(ts, 10, 0, 10, 20, 40, 140, 130, 240, '2016-10-01', '2017-07-01'))
 
-rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
-leftOfPeakEVI <- 0.9*(maxEVI - minEVI_right) + minEVI_right
+# change the smoothing, and plot how results change as data degrades
+# smoothing_names is the name to assign to each combo of smoothing windows
+# NOTE, the smoothing options are pairwise, NOT window_EVI_1_vector x window_EVI_2_vector
+test_smoothing_harmonic_nls <- function(ts, numRuns, elimPoints, window_EVI_1_vector, window_EVI_2_vector, smoothing_names, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY, fittingStartDay, fittingEndDay) {
+  
+  for (smoothingIndex in 1:length(smoothing_names)) {
+    
+    # get the smoothing parameters
+    window_EVI_1 <- window_EVI_1_vector[smoothingIndex]
+    window_EVI_2 <- window_EVI_2_vector[smoothingIndex]
+    
+    smoothing_name <- smoothing_names[smoothingIndex]
+    
+    # run algorithm the appropriate number of times
+    results <- run_harmonic_nls_algorithm(ts, numRuns, elimPoints, window_EVI_1, window_EVI_2, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY, fittingStartDay, fittingEndDay)
 
-date_startOfSeason <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = startOfSeasonEVI)
-date_endOfSeason <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = endOfSeasonEVI)
+    # plot the results
+    plot(elimPoints, results['peak_mean',], main = paste0('mean peak for ', smoothing_name), ylab = 'peak [day]', xlab = 'num points eliminated',
+         ylim = c(min(results['peak_mean',]-results['peak_sd',]), max(results['peak_mean',]+results['peak_sd',])))
+    arrows(elimPoints, results['peak_mean',]-results['peak_sd',], elimPoints, results['peak_mean',]+results['peak_sd',], length=0.05, angle=90, code=3)
+    
+    plot(elimPoints, results['quarterPd_mean',], main = paste0('mean quarterPd for ', smoothing_name), ylab = 'quarterPd [day]', xlab = 'num points eliminated',
+         ylim = c(min(results['quarterPd_mean',]-results['quarterPd_sd',]), max(results['quarterPd_mean',]+results['quarterPd_sd',])))
+    arrows(elimPoints, results['quarterPd_mean',]-results['quarterPd_sd',], elimPoints, results['quarterPd_mean',]+results['quarterPd_sd',], length=0.05, angle=90, code=3)
+  }
+}
 
-date_rightOfPeak <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = rightOfPeakEVI)
-date_leftOfPeak <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = leftOfPeakEVI)
-midSeason <- mean(c(date_rightOfPeak$y, date_leftOfPeak$y))
-
-quarter_period1 <- (date_endOfSeason$y - date_startOfSeason$y)/4
-quarter_period2 <- (midSeason - date_startOfSeason$y)/2
-quarter_period3 <- (date_endOfSeason$y - midSeason)/2
-quarter_period_comparable <- (midSeason - date_min$y)/2
-mean_quarter_period = mean(c(quarter_period1, quarter_period2, quarter_period3))
-
-print(c('date_startOfSeason', date_startOfSeason$y))
-print(c('date_endOfSeason', date_endOfSeason$y))
-print(c('midSeason', midSeason))
-print(c('q pd 1', quarter_period1))
-print(c('q pd 2', quarter_period2))
-print(c('q pd 3', quarter_period3))
-print(c('mean qpd', mean_quarter_period))
-print(c('comparable quarter period', quarter_period_comparable))
-
+test_smoothing_harmonic_nls(ts, 50, c(1), c(0, 0, 20), c(0, 20, 20), c('no smoothing', 'half smoothing', 'full smoothing'), 40, 140, 130, 240, '2016-10-01', '2017-07-01')
 ```
+
+
 
 ## Harmonic fitting exactly as in TIMESAT
 
