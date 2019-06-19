@@ -112,7 +112,7 @@ library(dplyr)
 as <- seq(-100, 100, 10)
 bs <- seq(-100, 100, 10)
 ys <- seq(0.1, 100, 10)
-xs <- seq(-50, 200, 10)
+xs <- seq(-100, 100, 10)
 
 # given value of a (upper bound), find p(a)
 p_a <- function(a, plant_or_harv) {
@@ -126,7 +126,7 @@ p_a <- function(a, plant_or_harv) {
     fitted_mean <- para_h1_upperBound[1]
     fitted_sd <- para_h1_upperBound[2]
   }
-  return(pnorm(a, mean = fitted_mean, sd = fitted_sd))
+  return(dnorm(a, mean = fitted_mean, sd = fitted_sd))
 }
 
 # given value of b (lower bound), find p(b)
@@ -141,7 +141,7 @@ p_b <- function(b, plant_or_harv) {
     fitted_mean <- para_h1_lowerBound[1]
     fitted_sd <- para_h1_lowerBound[2]
   }
-  return(pnorm(b, mean = fitted_mean, sd = fitted_sd))
+  return(dnorm(b, mean = fitted_mean, sd = fitted_sd))
 }
 
 # given value of y (b - a or lower bound - upper bound), find p(y)
@@ -156,7 +156,7 @@ p_y <- function(y, plant_or_harv) {
     fitted_mean <- para_h1_y[1]
     fitted_sd <- para_h1_y[2]
   }
-  return(pnorm(y, mean = fitted_mean, sd = fitted_sd))
+  return(dnorm(y, mean = fitted_mean, sd = fitted_sd))
 }
 
 # given value of x, return the value of the double integral
@@ -188,34 +188,7 @@ calc_integral <- function(x, plant_or_harv, as, ys) {
   return(sum(result_matrix))
 }
 
-# given value of x, return the value of the double integral. DOESN'T GIVE A RESULT THAT'S FITTABLE WITH NLS()
-calc_integral_2 <- function(x, plant_or_harv, as, bs) {
-  
-  # initialize matrix to hold the argument of the integrals
-  num_as <- length(as)
-  num_bs <- length(bs)
-  result_matrix <- matrix(nrow = num_as, ncol = num_bs)
-  
-  for (a_index in 1:num_as) {
-    for (b_index in 1:num_bs) {
-      
-      a <- as[a_index]
-      b <- bs[b_index]
-      
-      prob_a <- p_a(a, plant_or_harv)
-      prob_b <- p_b(b, plant_or_harv)
-      
-      H_a <- Heaviside(x, a = a)
-      H_b <- Heaviside(x, a = b)
-      result <- prob_a*prob_b*(H_a - H_b)/(b - a)
-      
-      result_matrix[a_index, b_index] <- result
-      
-    }
-  }
-  
-  return(sum(result_matrix))
-}
+
 
 # calculate p(x) - use either calc_integral or calc_integral_2
 #prob_x_plant <- sapply(xs, calc_integral_2, plant_or_harv = 'plant', as = as, bs = bs)
@@ -229,7 +202,7 @@ prob_x_harv <- sapply(xs, calc_integral, plant_or_harv = 'harvest', as = as, ys 
 
 
 plant_error_data <- data.frame(error=xs, density=prob_x_plant)
-res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=60,sigma=30,k=1) , data = plant_error_data,  control = nls.control(maxiter = 500))
+res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=0,sigma=30,k=1) , data = plant_error_data,  control = nls.control(maxiter = 500))
 plant_error_params <- summary(res)$parameters[,"Estimate"]
 plant_error_mean_fullCalc <- plant_error_params[1]
 plant_error_sd_fullCalc <- plant_error_params[2]
@@ -240,7 +213,7 @@ plot(function(x) plant_error_scale_fullCalc*exp(-1/2*(x-plant_error_mean_fullCal
 
 
 harvest_error_data <- data.frame(error=xs, density=prob_x_harv)
-res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=60,sigma=30,k=1) , data = harvest_error_data,  control = nls.control(maxiter = 500))
+res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=0,sigma=30,k=1) , data = harvest_error_data,  control = nls.control(maxiter = 500))
 harvest_error_params <- summary(res)$parameters[,"Estimate"]
 harvest_error_mean_fullCalc <- harvest_error_params[1]
 harvest_error_sd_fullCalc <- harvest_error_params[2]
@@ -477,4 +450,37 @@ print_total_errors(plant_error_mean_sim, plant_error_sd_sim, harvest_error_mean_
                    harvest_lc_error_SC_mean_sim, harvest_lc_error_DC_mean_sim, harvest_lc_error_soy_mean_sim,
                    harvest_lc_error_SC_sd_sim, harvest_lc_error_DC_sd_sim, harvest_lc_error_soy_sd_sim,
                    "sim")
+```
+
+## unused
+
+```{r}
+# given value of x, return the value of the double integral. DOESN'T GIVE A RESULT THAT'S FITTABLE WITH NLS()
+calc_integral_2 <- function(x, plant_or_harv, as, bs) {
+  
+  # initialize matrix to hold the argument of the integrals
+  num_as <- length(as)
+  num_bs <- length(bs)
+  result_matrix <- matrix(nrow = num_as, ncol = num_bs)
+  
+  for (a_index in 1:num_as) {
+    for (b_index in 1:num_bs) {
+      
+      a <- as[a_index]
+      b <- bs[b_index]
+      
+      prob_a <- p_a(a, plant_or_harv)
+      prob_b <- p_b(b, plant_or_harv)
+      
+      H_a <- Heaviside(x, a = a)
+      H_b <- Heaviside(x, a = b)
+      result <- prob_a*prob_b*(H_a - H_b)/(b - a)
+      
+      result_matrix[a_index, b_index] <- result
+      
+    }
+  }
+  
+  return(sum(result_matrix))
+}
 ```
