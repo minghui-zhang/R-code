@@ -48,7 +48,61 @@ curve(dnorm(x, para_p1_y[1], para_p1_y[2]), col = 2, add = TRUE)
 
 ```
 
+## Karina's way to calculate timing error distribution (with simulation)
+## Results (mean, sd of pixel plant, harvest) will be called sim
+
+```{r}
+# let's generate realizations of alpha and beta values
+niter <- 10000
+a_p1_pred <- numeric(niter)
+b_p1_pred <- numeric(niter)
+a_h1_pred <- numeric(niter)
+b_h1_pred <- numeric(niter)
+error_p1_pred <- numeric(niter)
+error_h1_pred <- numeric(niter)
+
+for (i in 1:niter){ 
+	a_p1_pred[i] <- rnorm(1, mean = para_p1_upperBound['mean'], sd = para_p1_upperBound['sd'])
+	b_p1_pred[i] <- rnorm(1, mean = para_p1_lowerBound['mean'], sd = para_p1_lowerBound['sd'])
+	a_h1_pred[i] <- rnorm(1, mean = para_h1_upperBound['mean'], sd = para_h1_upperBound['sd'])
+	b_h1_pred[i] <- rnorm(1, mean = para_h1_lowerBound['mean'], sd = para_h1_lowerBound['sd'])
+}
+
+# let's generate realizations of epsilon values
+for (i in 1:niter){ 
+  error_p1_pred[i] <- runif(1, min = a_p1_pred[i], max = b_p1_pred[i])
+  error_h1_pred[i] <- runif(1, min = a_h1_pred[i], max = b_h1_pred[i])
+}
+
+# get rid of NaN values (happens if a > b, in about 5% of cases)
+error_p1_pred <- error_p1_pred[!is.na(error_p1_pred)]
+error_h1_pred <- error_h1_pred[!is.na(error_h1_pred)]
+
+# then you can evaluate the distribution of error_p1_pred, etc
+#error_p1 <- density(error_p1_pred, kernel = c("gaussian"), na.rm = TRUE)
+
+fit_error_p1_pred <- fitdistr(error_p1_pred, "normal")
+para_error_p1_pred <- fit_error_p1_pred$estimate
+hist(error_p1_pred, prob = TRUE, main = "p1 error, sim", xlab = 'error [days]')
+curve(dnorm(x, para_error_p1_pred[1], para_error_p1_pred[2]), col = 2, add = TRUE)
+
+fit_error_h1_pred <- fitdistr(error_h1_pred, "normal")
+para_error_h1_pred <- fit_error_h1_pred$estimate
+hist(error_h1_pred, prob = TRUE, main = "h1 error, sim", xlab = 'error [days]')
+curve(dnorm(x, para_error_h1_pred[1], para_error_h1_pred[2]), col = 2, add = TRUE)
+
+plant_error_mean_sim <- para_error_p1_pred[1]
+plant_error_sd_sim <- para_error_p1_pred[2]
+harvest_error_mean_sim <- para_error_h1_pred[1]
+harvest_error_sd_sim <- para_error_h1_pred[2]
+
+print(paste('plant pixel error', plant_error_mean_sim, '+/-', plant_error_sd_sim))
+print(paste('harvest pixel error', harvest_error_mean_sim, '+/-', harvest_error_sd_sim))
+
+```
+
 ## Numerically calculate timing error distribution
+## Results (mean, sd of pixel plant, harvest) will be called fullCalc
 
 ```{r}
 library(fBasics) # for Heaviside fcn
@@ -177,28 +231,28 @@ prob_x_harv <- sapply(xs, calc_integral, plant_or_harv = 'harvest', as = as, ys 
 plant_error_data <- data.frame(error=xs, density=prob_x_plant)
 res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=60,sigma=30,k=1) , data = plant_error_data,  control = nls.control(maxiter = 500))
 plant_error_params <- summary(res)$parameters[,"Estimate"]
-plant_error_mean <- plant_error_params[1]
-plant_error_sd <- plant_error_params[2]
-plant_error_scale <- plant_error_params[3]
-plot(xs, prob_x_plant, main = 'p(error) for planting', xlab = 'error', ylab = 'density')
-plot(function(x) plant_error_scale*exp(-1/2*(x-plant_error_mean)^2/plant_error_sd^2),col=2,add=T,xlim=range(plant_error_data$error))
+plant_error_mean_fullCalc <- plant_error_params[1]
+plant_error_sd_fullCalc <- plant_error_params[2]
+plant_error_scale_fullCalc <- plant_error_params[3]
+plot(xs, prob_x_plant, main = 'p(error) for planting, fullCalc', xlab = 'error', ylab = 'density')
+plot(function(x) plant_error_scale_fullCalc*exp(-1/2*(x-plant_error_mean_fullCalc)^2/plant_error_sd_fullCalc^2),col=2,add=T,xlim=range(plant_error_data$error))
 
 
 
 harvest_error_data <- data.frame(error=xs, density=prob_x_harv)
 res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=60,sigma=30,k=1) , data = harvest_error_data,  control = nls.control(maxiter = 500))
 harvest_error_params <- summary(res)$parameters[,"Estimate"]
-harvest_error_mean <- harvest_error_params[1]
-harvest_error_sd <- harvest_error_params[2]
-harvest_error_scale <- harvest_error_params[3]
-plot(xs, prob_x_harv, main = 'p(error) for harvest', xlab = 'error', ylab = 'density')
-plot(function(x) harvest_error_scale*exp(-1/2*(x-harvest_error_mean)^2/harvest_error_sd^2),col=2,add=T,xlim=range(plant_error_data$error))
+harvest_error_mean_fullCalc <- harvest_error_params[1]
+harvest_error_sd_fullCalc <- harvest_error_params[2]
+harvest_error_scale_fullCalc <- harvest_error_params[3]
+plot(xs, prob_x_harv, main = 'p(error) for harvest, fullCalc', xlab = 'error', ylab = 'density')
+plot(function(x) harvest_error_scale_fullCalc*exp(-1/2*(x-harvest_error_mean_fullCalc)^2/harvest_error_sd_fullCalc^2),col=2,add=T,xlim=range(plant_error_data$error))
 
-print(c('plant error mean', plant_error_mean))
-print(c('plant error sd', plant_error_sd))
+print(c('plant error mean', plant_error_mean_fullCalc))
+print(c('plant error sd', plant_error_sd_fullCalc))
 
-print(c('harvest error mean', harvest_error_mean))
-print(c('harvest error sd', harvest_error_sd))
+print(c('harvest error mean', harvest_error_mean_fullCalc))
+print(c('harvest error sd', harvest_error_sd_fullCalc))
 
 ```
 ## Create land use cases
@@ -268,7 +322,7 @@ classified_case[wrong_nonsoy_actual_DC] <- 1
 set.seed(124)
 
 # given a land cover and plant/harvest, randomly generate planting and harvest pixel-level errors and take the median to simulate the error at 50km scale
-calc_median_date <- function(agri_pixels, land_cover, plant_or_harv) {
+calc_median_date <- function(agri_pixels, land_cover, plant_or_harv, plant_error_mean, plant_error_sd, harvest_error_mean, harvest_error_sd) {
   if (plant_or_harv == 'plant') {
     error_mean <- plant_error_mean
     error_sd <- plant_error_sd
@@ -292,14 +346,14 @@ calc_median_date <- function(agri_pixels, land_cover, plant_or_harv) {
 
 # given the number of sims to do, calculate median timing for actual and classified land covers
 
-calc_land_cover_error <- function(nsims, agri_pixels, actual_case, classified_case, plant_or_harv) {
+calc_land_cover_error <- function(nsims, agri_pixels, actual_case, classified_case, plant_or_harv, plant_error_mean, plant_error_sd, harvest_error_mean, harvest_error_sd) {
   SC_diffs <- numeric(nsims)
   DC_diffs <- numeric(nsims)
   soy_diffs <- numeric(nsims)
   
   for (sim in 1:nsims) {
-    actual_medians <- calc_median_date(agri_pixels, actual_case, plant_or_harv)
-    classified_medians <- calc_median_date(agri_pixels, actual_case, plant_or_harv)
+    actual_medians <- calc_median_date(agri_pixels, actual_case, plant_or_harv, plant_error_mean, plant_error_sd, harvest_error_mean, harvest_error_sd)
+    classified_medians <- calc_median_date(agri_pixels, classified_case, plant_or_harv, plant_error_mean, plant_error_sd, harvest_error_mean, harvest_error_sd)
     
     SC_diffs[sim] <- actual_medians['SC'] - classified_medians['SC']
     DC_diffs[sim] <- actual_medians['DC'] - classified_medians['DC']
@@ -312,15 +366,115 @@ calc_land_cover_error <- function(nsims, agri_pixels, actual_case, classified_ca
 }
 
 # calculate difference in median dates between the two cases
-harvest_lc_error <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'harvest')
-plant_lc_error <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'plant')
+harvest_lc_error_fullCalc <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'harvest', plant_error_mean_fullCalc, plant_error_sd_fullCalc, harvest_error_mean_fullCalc, harvest_error_sd_fullCalc)
 
-hist(plant_lc_error$SC, main = 'SC plant lc error')
-hist(plant_lc_error$DC, main = 'DC plant lc error')
-hist(plant_lc_error$soy, main = 'soy plant lc error')
+plant_lc_error_fullCalc <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'plant', plant_error_mean_fullCalc, plant_error_sd_fullCalc, harvest_error_mean_fullCalc, harvest_error_sd_fullCalc)
 
-hist(harvest_lc_error$SC, main = 'SC harvest lc error')
-hist(harvest_lc_error$DC, main = 'DC harvest lc error')
-hist(harvest_lc_error$soy, main = 'soy harvest lc error')
+harvest_lc_error_sim <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'harvest', plant_error_mean_sim, plant_error_sd_sim, harvest_error_mean_sim, harvest_error_sd_sim)
 
+plant_lc_error_sim <- calc_land_cover_error(500, agri_pixels, actual_case, classified_case, 'plant', plant_error_mean_sim, plant_error_sd_sim, harvest_error_mean_sim, harvest_error_sd_sim)
+
+hist(plant_lc_error_fullCalc$SC, main = 'SC plant lc error fullCalc')
+hist(plant_lc_error_fullCalc$DC, main = 'DC plant lc error fullCalc')
+hist(plant_lc_error_fullCalc$soy, main = 'soy plant lc error fullCalc')
+
+hist(harvest_lc_error_fullCalc$SC, main = 'SC harvest lc error fullCalc')
+hist(harvest_lc_error_fullCalc$DC, main = 'DC harvest lc error fullCalc')
+hist(harvest_lc_error_fullCalc$soy, main = 'soy harvest lc error fullCalc')
+
+hist(plant_lc_error_sim$SC, main = 'SC plant lc error sim')
+hist(plant_lc_error_sim$DC, main = 'DC plant lc error sim')
+hist(plant_lc_error_sim$soy, main = 'soy plant lc error sim')
+
+hist(harvest_lc_error_sim$SC, main = 'SC harvest lc error sim')
+hist(harvest_lc_error_sim$DC, main = 'DC harvest lc error sim')
+hist(harvest_lc_error_sim$soy, main = 'soy harvest lc error sim')
+
+# find mean and sd of land cover error
+plant_lc_error_SC_mean_fullCalc <- max(mean(plant_lc_error_fullCalc$SC), 0)
+plant_lc_error_DC_mean_fullCalc <- max(mean(plant_lc_error_fullCalc$DC), 0)
+plant_lc_error_soy_mean_fullCalc <- max(mean(plant_lc_error_fullCalc$soy), 0)
+
+plant_lc_error_SC_sd_fullCalc <- sd(plant_lc_error_fullCalc$SC)
+plant_lc_error_DC_sd_fullCalc <- sd(plant_lc_error_fullCalc$DC)
+plant_lc_error_soy_sd_fullCalc <- sd(plant_lc_error_fullCalc$soy)
+
+harvest_lc_error_SC_mean_fullCalc <- max(mean(harvest_lc_error_fullCalc$SC), 0)
+harvest_lc_error_DC_mean_fullCalc <- max(mean(harvest_lc_error_fullCalc$DC), 0)
+harvest_lc_error_soy_mean_fullCalc <- max(mean(harvest_lc_error_fullCalc$soy), 0)
+
+harvest_lc_error_SC_sd_fullCalc <- sd(harvest_lc_error_fullCalc$SC)
+harvest_lc_error_DC_sd_fullCalc <- sd(harvest_lc_error_fullCalc$DC)
+harvest_lc_error_soy_sd_fullCalc <- sd(harvest_lc_error_fullCalc$soy)
+
+plant_lc_error_SC_mean_sim <- max(mean(plant_lc_error_sim$SC), 0)
+plant_lc_error_DC_mean_sim <- max(mean(plant_lc_error_sim$DC), 0)
+plant_lc_error_soy_mean_sim <- max(mean(plant_lc_error_sim$soy), 0)
+
+plant_lc_error_SC_sd_sim <- sd(plant_lc_error_sim$SC)
+plant_lc_error_DC_sd_sim <- sd(plant_lc_error_sim$DC)
+plant_lc_error_soy_sd_sim <- sd(plant_lc_error_sim$soy)
+
+harvest_lc_error_SC_mean_sim <- max(mean(harvest_lc_error_sim$SC), 0)
+harvest_lc_error_DC_mean_sim <- max(mean(harvest_lc_error_sim$DC), 0)
+harvest_lc_error_soy_mean_sim <- max(mean(harvest_lc_error_sim$soy), 0)
+
+harvest_lc_error_SC_sd_sim <- sd(harvest_lc_error_sim$SC)
+harvest_lc_error_DC_sd_sim <- sd(harvest_lc_error_sim$DC)
+harvest_lc_error_soy_sd_sim <- sd(harvest_lc_error_sim$soy)
+```
+
+## Combine pixel estimate error and land cover error
+
+
+```{r}
+
+print_total_errors <- function(pixel_plant_mean, pixel_plant_sd, pixel_harvest_mean, pixel_harvest_sd,
+                               lc_plant_SC_mean, lc_plant_DC_mean, lc_plant_soy_mean,
+                               lc_plant_SC_sd, lc_plant_DC_sd, lc_plant_soy_sd,
+                               lc_harvest_SC_mean, lc_harvest_DC_mean, lc_harvest_soy_mean,
+                               lc_harvest_SC_sd, lc_harvest_DC_sd, lc_harvest_soy_sd,
+                               typeOfCalc) {
+  
+  total_plant_SC_error_mean <- pixel_plant_mean + lc_plant_SC_mean
+  total_plant_DC_error_mean <- pixel_plant_mean + lc_plant_DC_mean
+  total_plant_soy_error_mean <- pixel_plant_mean + lc_plant_soy_mean
+  
+  total_plant_SC_error_sd <- pixel_plant_sd + lc_plant_SC_sd
+  total_plant_DC_error_sd <- pixel_plant_sd + lc_plant_DC_sd
+  total_plant_soy_error_sd <- pixel_plant_sd + lc_plant_soy_sd
+  
+  total_harvest_SC_error_mean <- pixel_harvest_mean + lc_harvest_SC_mean
+  total_harvest_DC_error_mean <- pixel_harvest_mean + lc_harvest_DC_mean
+  total_harvest_soy_error_mean <- pixel_harvest_mean + lc_harvest_soy_mean
+  
+  total_harvest_SC_error_sd <- pixel_harvest_sd + lc_harvest_SC_sd
+  total_harvest_DC_error_sd <- pixel_harvest_sd + lc_harvest_DC_sd
+  total_harvest_soy_error_sd <- pixel_harvest_sd + lc_harvest_soy_sd
+  
+  # print out the errors
+  print(typeOfCalc)
+  print(paste(typeOfCalc, 'plant SC error:', total_plant_SC_error_mean, '+/-', total_plant_SC_error_sd, 'days'))
+  print(paste(typeOfCalc, 'harvest SC error:', total_harvest_SC_error_mean, '+/-', total_harvest_SC_error_sd, 'days'))
+  
+  print(paste(typeOfCalc, 'plant DC error:', total_plant_DC_error_mean, '+/-', total_plant_DC_error_sd, 'days'))
+  print(paste(typeOfCalc, 'harvest DC error:', total_harvest_DC_error_mean, '+/-', total_harvest_DC_error_sd, 'days'))
+  
+  print(paste(typeOfCalc, 'plant soy error:', total_plant_soy_error_mean, '+/-', total_plant_soy_error_sd, 'days'))
+  print(paste(typeOfCalc, 'harvest soy error:', total_harvest_soy_error_mean, '+/-', total_harvest_soy_error_sd, 'days'))
+}
+
+print_total_errors(plant_error_mean_fullCalc, plant_error_sd_fullCalc, harvest_error_mean_fullCalc, harvest_error_sd_fullCalc,
+                   plant_lc_error_SC_mean_fullCalc, plant_lc_error_DC_mean_fullCalc, plant_lc_error_soy_mean_fullCalc,
+                   plant_lc_error_SC_sd_fullCalc, plant_lc_error_DC_sd_fullCalc, plant_lc_error_soy_sd_fullCalc,
+                   harvest_lc_error_SC_mean_fullCalc, harvest_lc_error_DC_mean_fullCalc, harvest_lc_error_soy_mean_fullCalc,
+                   harvest_lc_error_SC_sd_fullCalc, harvest_lc_error_DC_sd_fullCalc, harvest_lc_error_soy_sd_fullCalc,
+                   "fullCalc")
+
+print_total_errors(plant_error_mean_sim, plant_error_sd_sim, harvest_error_mean_sim, harvest_error_sd_sim,
+                   plant_lc_error_SC_mean_sim, plant_lc_error_DC_mean_sim, plant_lc_error_soy_mean_sim,
+                   plant_lc_error_SC_sd_sim, plant_lc_error_DC_sd_sim, plant_lc_error_soy_sd_sim,
+                   harvest_lc_error_SC_mean_sim, harvest_lc_error_DC_mean_sim, harvest_lc_error_soy_mean_sim,
+                   harvest_lc_error_SC_sd_sim, harvest_lc_error_DC_sd_sim, harvest_lc_error_soy_sd_sim,
+                   "sim")
 ```
