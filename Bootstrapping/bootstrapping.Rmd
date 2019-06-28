@@ -9,8 +9,8 @@ output: html_document
 
 library(MASS)
 
-p1_errors <- read.csv('p1_error_toBootstrap_v2.csv')
-h1_errors <- read.csv('h1_error_toBootstrap_v2.csv')
+p1_errors <- read.csv('p1_error_toBootstrap_v3.csv')
+h1_errors <- read.csv('h1_error_toBootstrap_v3.csv')
 
 p1_y <- p1_errors$p1_lowerBoundError - p1_errors$p1_upperBoundError
 h1_y <- h1_errors$h1_lowerBoundError - h1_errors$h1_upperBoundError
