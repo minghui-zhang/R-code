@@ -15,7 +15,7 @@ library(zoo)
 library(ggplot2)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('point15.csv')[,1:2]
+ts <- read.csv('point7.csv')[,1:2]
 
 colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
@@ -156,10 +156,6 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   
   # Model that sets w (as in TIMESAT)
   model_GEE_harmonic <- lm(EVI_fitting~ t_yrs + cos(wt) + sin(wt))
-
-  plot(ts_fitting_R$t, EVI_fitting)
-  lines(ts_fitting_R$t, EVI_fitting, col = "green")
-  lines(ts_fitting_R$t, fitted(model_GEE_harmonic), col = "red")
   
   # calculate fitted maximum day. NOTE, the fitted phi doesn't always match with GEE fitted phi... GEE's phi is usually around +2 or -3
   b2 <- model_GEE_harmonic$coefficients[3]
@@ -170,8 +166,19 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   #maxEVIday_fitted <- 365*phi/(2*3.14*freq_invYrs)
   #if (maxEVIday_fitted < 0) {maxEVIday_fitted <- maxEVIday_fitted + 365/freq_invYrs}
   
-  results <- c(maxEVIday, quarterPd)
-  names(results) <- c('maxEVIday_numeric', 'quarterPd')
+  # calculate max date of fitted EVI
+  maxEVIfitted <- max(fitted(model_GEE_harmonic))
+  maxEVIday_fitted <- approx(x = fitted(model_GEE_harmonic), y = ts_fitting_R$t, xout = maxEVIfitted)$y
+  
+  results <- c(maxEVIday_fitted, quarterPd)
+  names(results) <- c('maxEVIday_fitted', 'quarterPd')
+  
+  plot(ts_fitting_R$t, EVI_fitting, main = "GEE")
+  lines(ts_fitting_R$t, EVI_fitting, col = "green")
+  lines(ts_fitting_R$t, fitted(model_GEE_harmonic), col = "red")
+  abline(v = maxEVIday_fitted, col = "blue")
+  abline(v = maxEVIday_fitted - quarterPd, col = "red")
+  abline(v = maxEVIday_fitted - 2*quarterPd, col = "blue")
   
   return(results)
 }
@@ -190,7 +197,7 @@ run_GEE_algorithm <- function(ts, numRuns, elimPoints, window_EVI_1, window_EVI_
       
       numMissingPts <- elimPoints[numMissingPts_index]
       result <- R_GEE_algorithm(ts, window_EVI_1, window_EVI_2, window_dEVI, numMissingPts)
-      peak_results[runIndex, numMissingPts_index] <- result['maxEVIday_numeric']
+      peak_results[runIndex, numMissingPts_index] <- result['maxEVIday_fitted']
       peak_fitted_results[runIndex, numMissingPts_index] <- result['maxEVIday_fitted']
       quarterPd_results[runIndex, numMissingPts_index] <- result['quarterPd']
     }

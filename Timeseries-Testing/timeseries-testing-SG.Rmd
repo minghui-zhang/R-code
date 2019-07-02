@@ -15,7 +15,7 @@ library(zoo)
 library(ggplot2)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('point15.csv')[,1:2]
+ts <- read.csv('point7.csv')[,1:2]
 
 colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
@@ -124,11 +124,8 @@ TIMESAT_SG_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissingPts, 
   t <- ts_R$t
   
   # Savitsky-Golay filter
-  EVI_SG <- sgolayfilt(ts_R$EVI_smoothed2, p = 2, n = 11)
-  
-  plot(t, ts_R$EVI_smoothed2)
-  lines(t, ts_R$EVI_smoothed2, col = "green")
-  lines(t, EVI_SG, col = "red")
+  EVI_SG <- sgolayfilt(ts_R$EVI_smoothed2, p = 2, n = 15)
+
 
   # find phenological dates, first make sure the dates found are for first crop, first or second half
   firstHalf_dates <- which(t >= risingLimb_start_DOY & t <= risingLimb_end_DOY) # rising limb of first crop
@@ -148,23 +145,35 @@ TIMESAT_SG_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissingPts, 
   minEVI_left <- min(fittedEVI_firstHalf, na.rm = TRUE)
   minEVI_right <- min(fittedEVI_secondHalf, na.rm = TRUE)
   
-  date_min = approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = minEVI_left)$y
+  date_min <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = minEVI_left)$y
+  date_max <- approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = maxEVI)$y
+  
+  print('date_min')
+  print(date_min)
   
   # find phenological dates
-  rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
-  leftOfPeakEVI <- 0.9*(maxEVI - minEVI_right) + minEVI_right
+  #rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
+  #leftOfPeakEVI <- 0.9*(maxEVI - minEVI_right) + minEVI_right
 
-  date_rightOfPeak <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = rightOfPeakEVI)$y
-  date_leftOfPeak <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = leftOfPeakEVI)$y
+  #date_rightOfPeak <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = rightOfPeakEVI)$y
+  #date_leftOfPeak <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = leftOfPeakEVI)$y
   
-  if (is.na(date_rightOfPeak)) {date_rightOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
-  if (is.na(date_leftOfPeak)) {date_leftOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
+  #if (is.na(date_rightOfPeak)) {date_rightOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
+  #if (is.na(date_leftOfPeak)) {date_leftOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
 
-  midSeason <- mean(c(date_rightOfPeak, date_leftOfPeak))
-  quarter_period_comparable <- (midSeason - date_min)/2
+  #midSeason <- mean(c(date_rightOfPeak, date_leftOfPeak))
+  quarter_period_comparable <- (date_max - date_min)/2
 
-  results <- c(midSeason, quarter_period_comparable)
+  results <- c(date_max, quarter_period_comparable)
   names(results) <- c('midSeason', 'quarterPd_comparable')
+  
+    
+  plot(t, ts_R$EVI_smoothed2, main = "Savitsky Golay")
+  lines(t, ts_R$EVI_smoothed2, col = "green")
+  lines(t, EVI_SG, col = "red")
+  abline(v = date_min, col = "blue")
+  abline(v = date_max - quarter_period_comparable, col = "red")
+  abline(v = date_max, col = "blue")
   
   return(results)
 }
@@ -268,14 +277,14 @@ test_smoothing_SG <- function(ts, numRuns, elimPoints, window_EVI_1_vector, wind
 ## Testing
 
 ```{r}
-print(TIMESAT_SG_algorithm(ts, 0, 0, 0, 60, 150, 140, 200))
+print(TIMESAT_SG_algorithm(ts, 0, 0, 0, 50, 170, 150, 210))
 ```
 
 ## Computations
 
 ```{r}
 
-test_smoothing_SG(ts, 50, c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), c(0, 0, 20), c(0, 20, 20), c('no smoothing', 'half smoothing', 'full smoothing'), 50, 120, 170, 240)
+test_smoothing_SG(ts, 50, c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), c(0, 0, 20), c(0, 20, 20), c('no smoothing', 'half smoothing', 'full smoothing'), 10, 130, 110, 200)
 
 ```
 

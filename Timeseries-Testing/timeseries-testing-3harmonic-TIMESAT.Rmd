@@ -15,7 +15,7 @@ library(zoo)
 library(ggplot2)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('point15.csv')[,1:2]
+ts <- read.csv('point7.csv')[,1:2]
 
 colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
@@ -142,8 +142,7 @@ harmonic_TIMESAT_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissin
   t_fitting <- ts_R$t
   wt <- omega*t_fitting/(2*3.14)
   
-  plot(t_fitting, EVI_smoothed2)
-  lines(t_fitting, EVI_smoothed2, col = "green")
+
     
   # Fit. if smoothing fails, use try to return NA's for midSeason and quarterPeriod_comparable and exit function
   model_nls2 <- try(model_nls2 <- nls(EVI_smoothed2~c1 + c2*t_fitting + c3*(t_fitting^2) + c4*sin(wt) + c5*cos(wt) +
@@ -162,7 +161,7 @@ harmonic_TIMESAT_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissin
   return(results)
   }
 
-  lines(t_fitting, fitted(model_nls2), col = "red")
+
   
   # find phenological dates, first make sure the dates found are for first crop, first or second half
   firstHalf_dates <- which(ts_R$t >= risingLimb_start_DOY & ts_R$t <= risingLimb_end_DOY) # rising limb of first crop
@@ -183,22 +182,33 @@ harmonic_TIMESAT_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissin
   minEVI_right <- min(fittedEVI_secondHalf, na.rm = TRUE)
   
   date_min = approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = minEVI_left)$y
+  date_max <- approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = maxEVI)$y
+  
+  print('date_min')
+  print(date_min)
   
   # find phenological dates
-  rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
-  leftOfPeakEVI <- 0.9*(maxEVI - minEVI_right) + minEVI_right
+  #rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
+  #leftOfPeakEVI <- 0.9*(maxEVI - minEVI_right) + minEVI_right
 
-  date_rightOfPeak <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = rightOfPeakEVI)$y
-  date_leftOfPeak <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = leftOfPeakEVI)$y
+  # date_rightOfPeak <- approx(x = fittedEVI_secondHalf, y = t_secondHalf, xout = rightOfPeakEVI)$y
+  # date_leftOfPeak <- approx(x = fittedEVI_firstHalf, y = t_firstHalf, xout = leftOfPeakEVI)$y
+  # 
+  # if (is.na(date_rightOfPeak)) {date_rightOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
+  # if (is.na(date_leftOfPeak)) {date_leftOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
+  # 
+  # midSeason <- mean(c(date_rightOfPeak, date_leftOfPeak))
+  quarter_period_comparable <- (date_max - date_min)/2
   
-  if (is.na(date_rightOfPeak)) {date_rightOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
-  if (is.na(date_leftOfPeak)) {date_leftOfPeak <- mean(risingLimb_start_DOY, fallingLimb_end_DOY)}
-
-  midSeason <- mean(c(date_rightOfPeak, date_leftOfPeak))
-  quarter_period_comparable <- (midSeason - date_min)/2
-  
-  results <- c(midSeason, quarter_period_comparable)
+  results <- c(date_max, quarter_period_comparable)
   names(results) <- c('midSeason', 'quarterPd_comparable')
+  
+  plot(t_fitting, EVI_smoothed2, main = "3rd order harmonic, nls")
+  lines(t_fitting, EVI_smoothed2, col = "green")
+  lines(t_fitting, fitted(model_nls2), col = "red")
+  abline(v = date_min, col = "blue")
+  abline(v = date_max - quarter_period_comparable, col = "red")
+  abline(v = date_max, col = "blue")
   
   return(results)
 }
@@ -308,7 +318,7 @@ test_smoothing_harmonic_TIMESAT <- function(ts, numRuns, elimPoints, window_EVI_
 ## testing
 
 ```{r}
-print(harmonic_TIMESAT_algorithm(ts, 0, 0, 0, 60, 150, 140, 200, '2016-09-01', '2017-07-01'))
+print(harmonic_TIMESAT_algorithm(ts, 0, 0, 0, 50, 170, 150, 210, '2016-09-01', '2017-07-01'))
 ```
 
 ## Computations for harmonic TIMESAT
