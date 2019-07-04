@@ -15,7 +15,7 @@ library(zoo)
 library(ggplot2)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('point7.csv')[,1:2]
+ts <- read.csv('point3.csv')[,1:2]
 
 colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
@@ -146,8 +146,6 @@ harmonic_nls_simple_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMis
   return(results)
   }
 
-
-  
   # retreive omega from estimated coefficients
   omega <- summary(model_nls1)$parameters[6]
   #print('omega')
@@ -191,13 +189,13 @@ harmonic_nls_simple_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMis
   results <- c(date_max, quarter_period_comparable)
   names(results) <- c('midSeason', 'quarterPd_comparable')
   
-  plot(ts_R$t, EVI_smoothed2, main = "1st order harmonic nls") 
-  lines(ts_R$t, EVI_smoothed2, col = "green") 
+  plot(ts_R$t, EVI_smoothed2, main = "1st order harmonic nls", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
+  lines(ts_R$t, EVI_smoothed2, col = "black")
   lines(ts_R$t, fitted(model_nls1), col = "red")
   abline(v = date_min, col = "blue")
-  abline(v = date_max - quarter_period_comparable, col = "red")
+  abline(v = date_max - quarter_period_comparable, col = "darkgreen")
   abline(v = date_max, col = "blue")
-  
+
   return(results)
 }
 
@@ -285,6 +283,8 @@ test_smoothing_harmonic_nls_simple <- function(ts, numRuns, elimPoints, window_E
     geom_errorbar(data = plot_df,
                   aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name),
                   width = 0.4) +
+    scale_color_manual(values = c('blue', 'darkgreen', 'red')) +
+    theme_bw() +
     ggtitle('Peak, harmonic nls') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
@@ -295,6 +295,8 @@ test_smoothing_harmonic_nls_simple <- function(ts, numRuns, elimPoints, window_E
     geom_errorbar(data = plot_df,
                   aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name),
                   width = 0.4) +
+    scale_color_manual(values = c('blue', 'darkgreen', 'red')) +
+    theme_bw() +
     ggtitle('Quarter period, harmonic nls') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')
@@ -309,11 +311,11 @@ test_smoothing_harmonic_nls_simple <- function(ts, numRuns, elimPoints, window_E
 ```{r}
 # ts, window_EVI_1, window_EVI_2, numMissingPts, risingLimb_start_DOY, risingLimb_end_DOY, fallingLimb_start_DOY, fallingLimb_end_DOY, fittingStartDay, fittingEndDay
 
-print(harmonic_nls_simple_algorithm(ts, 0, 0, 0, 50, 170, 150, 210, '2016-09-01', '2017-02-01'))
+print(harmonic_nls_simple_algorithm(ts, 0, 0, 0, 10, 120, 110, 200, '2016-09-01', '2017-02-01'))
 ```
 
 ## Harmonic nls computation
 
 ```{r}
-test_smoothing_harmonic_nls_simple(ts, 50, seq(0, 10), c(0, 0, 20), c(0, 20, 20), c('no smoothing', 'half smoothing', 'full smoothing'), 50, 120, 110, 190, '2016-10-01', '2017-03-01')
+test_smoothing_harmonic_nls_simple(ts, 50, seq(0, 10), c(0, 0, 20), c(0, 20, 20), c('double smoothed EVI', 'single smoothed EVI', 'unsmoothed EVI'),20, 140, 120, 190, '2016-09-01', '2017-02-01')
 ```

@@ -15,7 +15,7 @@ library(zoo)
 library(ggplot2)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('point7.csv')[,1:2]
+ts <- read.csv('point1.csv')[,1:2]
 
 colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
@@ -168,17 +168,21 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   
   # calculate max date of fitted EVI
   maxEVIfitted <- max(fitted(model_GEE_harmonic))
-  maxEVIday_fitted <- approx(x = fitted(model_GEE_harmonic), y = ts_fitting_R$t, xout = maxEVIfitted)$y
+  maxEVIday_fitted <- ts_fitting_R$t[which(fitted(model_GEE_harmonic) == maxEVIfitted)][1] 
+  #approx(x = fitted(model_GEE_harmonic), y = ts_fitting_R$t, xout = maxEVIfitted)$y
   
   results <- c(maxEVIday_fitted, quarterPd)
   names(results) <- c('maxEVIday_fitted', 'quarterPd')
   
-  plot(ts_fitting_R$t, EVI_fitting, main = "GEE")
-  lines(ts_fitting_R$t, EVI_fitting, col = "green")
+  plot(ts_fitting_R$t, EVI_fitting, main = "GEE", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
+  lines(ts_fitting_R$t, EVI_fitting, col = "black")
   lines(ts_fitting_R$t, fitted(model_GEE_harmonic), col = "red")
   abline(v = maxEVIday_fitted, col = "blue")
-  abline(v = maxEVIday_fitted - quarterPd, col = "red")
-  abline(v = maxEVIday_fitted - 2*quarterPd, col = "blue")
+  abline(v = maxEVIday_fitted - quarterPd, col = "darkgreen")
+  legend("topright", 
+    legend = c("EVI for fitting", "Fitted EVI", "Estimated date of max or min EVI", "Estimated greenup date"), 
+    col = c("black", "red", "blue", "darkgreen"),
+    pch = 15)
   
   return(results)
 }
@@ -234,6 +238,7 @@ test_smoothing_GEE <- function(ts, numRuns, elimPoints, window_EVI_1_vector, win
   
   for (smoothingIndex in 1:length(smoothing_names)) {
     
+    print('in test')
     # get the smoothing parameters
     window_EVI_1 <- window_EVI_1_vector[smoothingIndex]
     window_EVI_2 <- window_EVI_2_vector[smoothingIndex]
@@ -244,16 +249,22 @@ test_smoothing_GEE <- function(ts, numRuns, elimPoints, window_EVI_1_vector, win
     # run algorithm the appropriate number of times, then save them in the plot_df
     results <- run_GEE_algorithm(ts, numRuns, elimPoints, window_EVI_1, window_EVI_2, window_dEVI)
     plot_df <- rbind(plot_df, data.frame(smoothing_name = rep(smoothing_name, length(elimPoints)), eliminated_points = elimPoints, peak_mean = results['peak_mean',], peak_sd = results['peak_sd',], quarterPd_mean = results['quarterPd_mean',], quarterPd_sd = results['quarterPd_sd',], jitter_amount = rep(smoothingIndex/10, length(elimPoints))))
-  
     
-    plot(elimPoints, results['peak_mean',], main = paste0('mean peak for ', smoothing_name), ylab = 'peak [day]', xlab = 'num points eliminated',
-         ylim = c(min(results['peak_mean',]-results['peak_sd',]), max(results['peak_mean',]+results['peak_sd',])))
-    arrows(elimPoints, results['peak_mean',]-results['peak_sd',], elimPoints, results['peak_mean',]+results['peak_sd',], length=0.05, angle=90, code=3)
+    # transpose results before cleaning and plotting
+    results <- as.data.frame(t(results))
+    results_toKeep <- complete.cases(results)
+    results <- results[results_toKeep,]
     
-    plot(elimPoints, results['quarterPd_mean',], main = paste0('mean quarterPd for ', smoothing_name), ylab = 'quarterPd [day]', xlab = 'num points eliminated',
-         ylim = c(min(results['quarterPd_mean',]-results['quarterPd_sd',]), max(results['quarterPd_mean',]+results['quarterPd_sd',])))
-    arrows(elimPoints, results['quarterPd_mean',]-results['quarterPd_sd',], elimPoints, results['quarterPd_mean',]+results['quarterPd_sd',], length=0.05, angle=90, code=3)
+    plot(elimPoints[results_toKeep], results$peak_mean, main = paste0('mean peak for ', smoothing_name), ylab = 'peak [day]', xlab = 'num points eliminated',
+      ylim = c(min(results$peak_mean-results$peak_sd), max(results$peak_mean+results$peak_sd)))
+ arrows(elimPoints[results_toKeep], results$peak_mean-results$peak_sd, elimPoints[results_toKeep], results$peak_mean+results$peak_sd, length=0.05, angle=90, code=3)
+
+ plot(elimPoints[results_toKeep], results$quarterPd_mean, main = paste0('mean quarterPd for ', smoothing_name), ylab = 'quarterPd [day]', xlab = 'num points eliminated',
+      ylim = c(min(results$quarterPd_mean-results$quarterPd_sd), max(results$quarterPd_mean+results$quarterPd_sd)))
+ arrows(elimPoints[results_toKeep], results$quarterPd_mean-results$quarterPd_sd, elimPoints[results_toKeep], results$quarterPd_mean+results$quarterPd_sd, length=0.05, angle=90, code=3)
   }
+  
+  plot_df <- plot_df[complete.cases(plot_df),]
   
   plot_df$eliminated_points_toPlot <- plot_df$eliminated_points + plot_df$jitter_amount
   
@@ -265,6 +276,8 @@ test_smoothing_GEE <- function(ts, numRuns, elimPoints, window_EVI_1_vector, win
     geom_errorbar(data = plot_df,
                   aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name),
                   width = 0.4) +
+    scale_color_manual(values = c('blue', 'darkgreen', 'purple', 'orange', 'red')) +
+    theme_bw() +
     ggtitle('Peak, GEE') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
@@ -275,6 +288,8 @@ test_smoothing_GEE <- function(ts, numRuns, elimPoints, window_EVI_1_vector, win
     geom_errorbar(data = plot_df,
                   aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name),
                   width = 0.4) +
+    scale_color_manual(values = c('blue', 'darkgreen', 'purple', 'orange', 'red')) +
+    theme_bw() +
     ggtitle('Quarter period, GEE') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')
@@ -297,6 +312,6 @@ print(R_GEE_algorithm(ts, 20, 20, 40, 0))
 
 ```{r}
 
-test_smoothing_GEE(ts, 50, c(0, 1 ,2, 3, 4, 5, 6, 7, 8, 9, 10), c(20, 0, 0, 20, 20), c(20, 0, 0, 20, 0), c(40, 0, 40, 0, 40), c('full smoothing', 'no smoothing', 'only dEVI smoothing', 'EVI smoothing, no dEVI smoothing', 'half EVI smoothing, dEVI smoothing'))
+test_smoothing_GEE(ts, 50, c(0, 1 ,2, 3, 4, 5, 6, 7, 8, 9, 10), c(20, 0, 0, 20, 0), c(20, 20, 0, 20, 0), c(40, 40, 40, 0, 0), c('double smoothed EVI, smoothed dEVI', 'single smoothed EVI, smoothed dEVI', 'unsmoothed EVI, smoothed dEVI', 'double smoothed EVI, unsmoothed dEVI', 'unsmoothed EVI, unsmoothed dEVI'))
 
 ```

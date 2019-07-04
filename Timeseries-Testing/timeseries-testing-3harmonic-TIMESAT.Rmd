@@ -15,7 +15,7 @@ library(zoo)
 library(ggplot2)
 
 # need to read in, because regardless of whether use smooth or unsmoothed EVI for the other fitting methods, must start with nonsmoothed EVI here. doubly smoothed EVI (20, 20) is in the csv
-ts <- read.csv('point7.csv')[,1:2]
+ts <- read.csv('point3.csv')[,1:2]
 
 colnames(ts) <- c('date', 'EVI_raw')
 ts$date <- as.Date(ts$date, '%d-%h-%y')
@@ -184,8 +184,8 @@ harmonic_TIMESAT_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissin
   date_min = approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = minEVI_left)$y
   date_max <- approx(x = fittedEVI_firstCrop, y = t_firstCrop, xout = maxEVI)$y
   
-  print('date_min')
-  print(date_min)
+  # print('date_min')
+  # print(date_min)
   
   # find phenological dates
   #rightOfPeakEVI <- 0.9*(maxEVI - minEVI_left) + minEVI_left
@@ -203,11 +203,11 @@ harmonic_TIMESAT_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMissin
   results <- c(date_max, quarter_period_comparable)
   names(results) <- c('midSeason', 'quarterPd_comparable')
   
-  plot(t_fitting, EVI_smoothed2, main = "3rd order harmonic, nls")
-  lines(t_fitting, EVI_smoothed2, col = "green")
+  plot(t_fitting, EVI_smoothed2, main = "3rd order harmonic, nls", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
+  lines(t_fitting, EVI_smoothed2, col = "black")
   lines(t_fitting, fitted(model_nls2), col = "red")
   abline(v = date_min, col = "blue")
-  abline(v = date_max - quarter_period_comparable, col = "red")
+  abline(v = date_max - quarter_period_comparable, col = "darkgreen")
   abline(v = date_max, col = "blue")
   
   return(results)
@@ -296,6 +296,8 @@ test_smoothing_harmonic_TIMESAT <- function(ts, numRuns, elimPoints, window_EVI_
     geom_errorbar(data = plot_df,
                   aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name),
                   width = 0.4) +
+    scale_color_manual(values = c('blue', 'darkgreen', 'red')) +
+    theme_bw() +
     ggtitle('Peak, harmonic TIMESAT') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
@@ -306,6 +308,8 @@ test_smoothing_harmonic_TIMESAT <- function(ts, numRuns, elimPoints, window_EVI_
     geom_errorbar(data = plot_df,
                   aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name),
                   width = 0.4) +
+    scale_color_manual(values = c('blue', 'darkgreen', 'red')) +
+    theme_bw() +
     ggtitle('Quarter period, harmonic TIMESAT') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')
@@ -318,10 +322,10 @@ test_smoothing_harmonic_TIMESAT <- function(ts, numRuns, elimPoints, window_EVI_
 ## testing
 
 ```{r}
-print(harmonic_TIMESAT_algorithm(ts, 0, 0, 0, 50, 170, 150, 210, '2016-09-01', '2017-07-01'))
+print(harmonic_TIMESAT_algorithm(ts, 0, 0, 0, 10, 120, 110, 200, '2016-09-01', '2017-07-01'))
 ```
 
 ## Computations for harmonic TIMESAT
 ```{r}
-test_smoothing_harmonic_TIMESAT(ts, 50, seq(0, 10), c(0, 0, 20), c(0, 20, 20), c('no smoothing', 'half smoothing', 'full smoothing'), 50, 190, 170, 240, '2016-09-01', '2017-07-01')
+test_smoothing_harmonic_TIMESAT(ts, 50, seq(0, 10), c(0, 0, 20), c(0, 20, 20), c('double smoothed EVI', 'single smoothed EVI', 'unsmoothed EVI'), 20, 140, 120, 190, '2016-09-01', '2017-07-01')
 ```
