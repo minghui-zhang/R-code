@@ -200,7 +200,6 @@ prob_x_harv <- sapply(xs, calc_integral, plant_or_harv = 'harvest', as = as, ys 
 
 # fit p(x) to its own distribution (mean and sd) using nls()
 
-
 plant_error_data <- data.frame(error=xs, density=prob_x_plant)
 res <- nls( density ~ k*exp(-1/2*(error-mu)^2/sigma^2), start=c(mu=0,sigma=30,k=1) , data = plant_error_data,  control = nls.control(maxiter = 500))
 plant_error_params <- summary(res)$parameters[,"Estimate"]
