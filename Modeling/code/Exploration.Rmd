@@ -1,0 +1,148 @@
+---
+title: "Exploration"
+output: html_document
+---
+
+## read data
+
+```{r}
+library(ggplot2)
+
+median_cell <- read.csv('E:/R-code/Modeling/data/median_onset_cell.csv')
+percentile5_cell <- read.csv('E:/R-code/Modeling/data/percentile5_onset_cell.csv')
+percentile95_cell <- read.csv('E:/R-code/Modeling/data/percentile95_onset_cell.csv')
+```
+
+## clean data
+
+```{r}
+
+# set a new variable for whether it's SC or DC, i.e. make the data tidy
+
+#median_cell <- median_cell[complete.cases(median_cell$Shoulders), ] 
+```
+
+## exploratory plots of planting date
+
+```{r}
+ggplot(median_cell, aes(x = onset, y = double_plant)) + 
+  geom_point(color = "darkblue") +
+  geom_point(aes(x = onset, y = single_plant), color = "red", alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Plant Date") +
+  xlim(20, 150) +
+  ylim(20, 200) +
+  ggtitle("Median plant, Onset cell scale, all years") +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+ggplot(median_cell, aes(x = onset, y = double_plant, col = year)) + 
+  geom_point(alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Plant Date") +
+  xlim(20, 150) +
+  ylim(20, 200) +
+  ggtitle("Median plant, Onset cell scale, double crop") +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+
+ggplot(percentile5_cell, aes(x = onset, y = double_plant)) + 
+  geom_point(color = "darkblue") +
+  geom_point(aes(x = onset, y = single_plant), color = "red", alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Plant Date") +
+  xlim(20, 150) +
+  ylim(20, 200) +
+  ggtitle("5th percentile plant, Onset cell scale, all years") +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+ggplot(percentile5_cell, aes(x = onset, y = double_plant, col = year)) + 
+  geom_point(alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Plant Date") +
+  xlim(20, 150) +
+  ylim(20, 200) +
+  ggtitle("5th percentile plant, Onset cell scale, double crop") +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+ggplot(percentile95_cell, aes(x = onset, y = double_plant)) + 
+  geom_point(color = "darkblue") +
+  geom_point(aes(x = onset, y = single_plant), color = "red", alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Plant Date") +
+  xlim(20, 150) +
+  ylim(20, 200) +
+  ggtitle("95th percentile plant, Onset cell scale, all years") +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+ggplot(percentile95_cell, aes(x = onset, y = double_plant, col = year)) + 
+  geom_point(alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Plant Date") +
+  xlim(20, 150) +
+  ylim(20, 200) +
+  ggtitle("95th percentile plant, Onset cell scale, double crop") +
+  geom_abline(slope = 1, intercept = 0) +
+  theme_bw()
+
+```
+
+## exploratory plots of delay
+
+```{r}
+
+ggplot(median_cell, aes(x = onset, y = double_delay)) + 
+  geom_point(color = "darkblue") +
+  geom_point(aes(x = onset, y = single_delay), color = "red", alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Delay") +
+  ggtitle("Median delay, Onset cell scale, all years") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+
+ggplot(median_cell, aes(x = onset, y = double_delay, col = year)) + 
+  geom_point(alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Delay") +
+  ggtitle("Median delay, Onset cell scale, double crop") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+
+ggplot(percentile5_cell, aes(x = onset, y = double_delay)) + 
+  geom_point(color = "darkblue") +
+  geom_point(aes(x = onset, y = single_delay), color = "red", alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Delay") +
+  ggtitle("5th percentile delay, Onset cell scale, all years") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+
+ggplot(percentile5_cell, aes(x = onset, y = double_delay, col = year)) + 
+  geom_point(alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Delay") +
+  ggtitle("5th percentile delay, Onset cell scale, double crop") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+
+ggplot(percentile95_cell, aes(x = onset, y = double_delay)) + 
+  geom_point(color = "darkblue") +
+  geom_point(aes(x = onset, y = single_delay), color = "red", alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Delay") +
+  ggtitle("95th percentile delay, Onset cell scale, all years") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+
+ggplot(percentile95_cell, aes(x = onset, y = double_delay, col = year)) + 
+  geom_point(alpha = 0.3) +
+  xlab("Onset") +
+  ylab("Delay") +
+  ggtitle("95th percentile delay, Onset cell scale, double crop") +
+  geom_hline(yintercept = 0) +
+  theme_bw()
+```
