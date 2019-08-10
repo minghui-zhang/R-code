@@ -42,7 +42,7 @@ median_cell <- subset(median_cell_raw, select = -c(double_area_km2_median,
                                                label, latitude_sum, longitude_sum, 
                                                onset_historicalRange_sum, onset_sum, single_area_km2_median,
                                                single_delay_sum, single_harvest_sum, single_plant_sum,
-                                               total_planted_area_km2_median, year_sum) )
+                                               total_planted_area_km2_median, year_sum, Muni_code_sum) )
 
 median_cell <- median_cell %>% 
                             rename(
@@ -59,6 +59,7 @@ median_cell <- median_cell %>%
                               single_harvest = single_harvest_median,
                               single_plant = single_plant_median,
                               total_planted_area_km2 = total_planted_area_km2_sum,
+                              Muni_code = Muni_code_median,
                               year = year_median
                             ) %>%
                             filter(year > 0)
