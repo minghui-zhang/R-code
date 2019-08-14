@@ -152,22 +152,42 @@ plot_cell_correlelogram <- function(year, var.name) {
 
 for (year in 2004:2014) {
   
-  print(plot_cell_local_moran(year, "onset"))
-  print(plot_cell_lisa_cluster(year, "onset"))
-  print(plot_cell_correlelogram(year, "onset"))
+  #print(plot_cell_local_moran(year, "onset"))
+  #print(plot_cell_lisa_cluster(year, "onset"))
+  #print(plot_cell_correlelogram(year, "onset"))
   
-  print(plot_cell_local_moran(year, "DC_plant"))
-  print(plot_cell_lisa_cluster(year, "DC_plant"))
-  print(plot_cell_correlelogram(year, "DC_plant"))
+  #print(plot_cell_local_moran(year, "DC_plant"))
+  #print(plot_cell_lisa_cluster(year, "DC_plant"))
+  #print(plot_cell_correlelogram(year, "DC_plant"))
   
-  print(plot_cell_local_moran(year, "DC_delay"))
-  print(plot_cell_lisa_cluster(year, "DC_delay"))
-  print(plot_cell_correlelogram(year, "DC_delay"))
+  #print(plot_cell_local_moran(year, "DC_delay"))
+  #print(plot_cell_lisa_cluster(year, "DC_delay"))
+  #print(plot_cell_correlelogram(year, "DC_delay"))
 }
 
 
 ```
 
+## test
+
+```{r}
+
+cell_year <- cell_shp[cell_shp$year == 2004, ]
+
+  # eliminate no data cells
+  cell_year <- cell_year[!is.na(cell_year[["DC_plant"]]),]
+  
+ x = cell_year@data$lon
+ y = cell_year@data$lat
+  z = cell_year@data[["DC_plant"]]
+  
+# lisa analysis
+fit1 <- lisa(x = x, y = y, z = z, neigh = 3, resamp = 500)
+# }
+# NOT RUN {
+plot(fit1, neigh.mean=FALSE)
+# }
+```
 ## unused functions
 
 ```{r}
@@ -206,81 +226,3 @@ moran.test(cell_2010$DC_plant, listw, zero.policy = TRUE, na.action = na.exclude
 
 ```
 
-```{r}
-
-# Calculate neighbors. Neighbors are the same for all years
-neighbors <- poly2nb(cell_2010)
-
-# Convert the neighbour data to a listw object
-listw <- nb2listw(neighbors,zero.policy = TRUE)
-
-# eliminate no data cells
-cell_2010 <- cell_2010[!is.na(cell_2010$DC_plant),]
-
-# global spatial autocorrelation
-moran.test(cell_2010$DC_plant, listw, zero.policy = TRUE, na.action = na.exclude)
-
-# local spatial autocorrelation
-
-# creates a moran plot
-moran <- moran.plot(cell_2010$DC_plant, listw = nb2listw(neighbors, style = "W", zero.policy = TRUE), zero.policy = TRUE)
-
-# creates a local moran output
-local <- localmoran(x = cell_2010$DC_plant, listw = nb2listw(neighbors, style = "W", zero.policy = TRUE))
-
-# binds results to our polygon shapefile
-moran.map <- cbind(cell_2010, local)
-# maps the results
-tm_shape(moran.map) + tm_fill(col = "Ii", style = "quantile",
-title = "local moran statistic")
-
-# create LISA cluster map
-quadrant <- vector(mode="numeric",length=nrow(local))
-# centers the variable of interest around its mean
-m.plant <- cell_2010$DC_plant - mean(cell_2010$DC_plant)
-# centers the local Moran's around the mean
-m.local <- local[,1] - mean(local[,1], na.rm = TRUE)
-# significance threshold
-signif <- 0.05
-# builds a data quadrant
-quadrant[m.plant >0 & m.local>0] <- 4
-quadrant[m.plant <0 & m.local<0] <- 1
-quadrant[m.plant <0 & m.local>0] <- 2
-quadrant[m.plant >0 & m.local<0] <- 3
-#quadrant[local[,5]>signif] <- 0
-# plot in r
-brks <- c(0,1,2,3,4)
-colors <- c("white","blue",rgb(0,0,1,alpha=0.4),rgb(1,0,0,alpha=0.4),"red")
-plot(cell_2010,border="lightgray",col=colors[findInterval(quadrant,brks,all.inside=FALSE)])
-box()
-legend("bottomleft",legend=c("insignificant","low-low","low-high","high-low","high-high"),
-fill=colors,bty="n")
-
-# Getis-Ortid ---------------------------------------------------------------------------------------------------------------
-# creates centroid and joins neighbours within 0 and x units
-nb <- dnearneigh(coordinates(cell_2010),0,100000) # 25km is individual cell
-# creates listw
-nb_lw <- nb2listw(nb, style = 'B')
-# compute Getis-Ord Gi statistic
-local_g <- localG(cell_2010$DC_plant, nb_lw)
-local_g <- cbind(cell_2010, as.matrix(local_g))
-names(local_g)[6] <- "gstat"
-# map the results
-tm_shape(local_g) + tm_fill("gstat", palette = "RdBu", style = "pretty") +
-tm_borders(alpha=.4)
-
-# spatial correlelogram ---------------------------------------------------------------------------------------------------------------
-# source: http://www.petrkeil.com/?p=1050
-
-# using spsep package; this method takes too long
-#sp.cor <- sp.correlogram(nb, cell_2010$DC_plant, order=15, method="I", randomisation=FALSE)
-
-# using pgirmess package
-# first project from degrees to WGS 84 so distance units are more interpretable... but not used
-#cell_2010_km = spTransform(cell_2010, CRS('+init=epsg:5880'))
-latlon = data.frame(x = cell_2010@data$lon, y = cell_2010@data$lat)
-z_value = cell_2010@data$DC_plant
-pgi.cor <- correlog(coords=latlon, z=z_value, method="Moran", nbclass=21)
-plot(pgi.cor[,'dist.class'], pgi.cor[,'coef'], ylab = "Moran's I", xlab = "distance unit (degrees)", main = "spatial correlation")
-abline(h = 0)
-```

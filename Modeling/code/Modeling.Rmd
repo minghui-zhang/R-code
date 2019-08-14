@@ -1,0 +1,79 @@
+---
+title: "Exploration"
+output: html_document
+---
+
+## read data
+
+```{r}
+
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+
+source('E:/R-code/Modeling/code/FCN_clean_csvs.R')
+
+median_cell_raw <- read.csv('E:/R-code/Modeling/data/median_onset_cell_v2.csv')
+percentile5_cell_raw <- read.csv('E:/R-code/Modeling/data/percentile5_onset_cell_v2.csv')
+percentile95_cell_raw <- read.csv('E:/R-code/Modeling/data/percentile95_onset_cell_v2.csv')
+
+median_muni_raw <- read.csv('E:/R-code/Modeling/data/median_muni_v2.csv')
+percentile5_muni_raw <- read.csv('E:/R-code/Modeling/data/percentile5_muni_v2.csv')
+percentile95_muni_raw <- read.csv('E:/R-code/Modeling/data/percentile95_muni_v2.csv')
+
+median_CARpoly_raw <- read.csv('E:/R-code/Modeling/data/median_CARpoly_v2.csv')
+percentile5_CARpoly_raw <- read.csv('E:/R-code/Modeling/data/percentile5_CARpoly_v2.csv')
+percentile95_CARpoly_raw <- read.csv('E:/R-code/Modeling/data/percentile95_CARpoly_v2.csv')
+
+```
+
+## constants
+
+```{r}
+
+min_soy_area <- 2 #km2. min area of total or SC/DC soy in cell, muni or property to be considered in model
+
+```
+
+## rename and delete the columns (only needed for median)
+
+```{r}
+
+# median cell
+median_cell <- median_cell_raw %>% delete_cols_median_cell() %>%
+                                    rename_cols_median_cell()
+percentile5_cell <- percentile5_cell_raw %>% filter(year > 0)
+percentile95_cell <- percentile95_cell_raw %>% filter(year > 0)
+
+# median muni
+median_muni <- median_muni_raw %>% rename_cols_median_muni()
+percentile5_muni <- percentile5_muni_raw %>% filter(year > 0)
+percentile95_muni <- percentile95_muni_raw %>% filter(year > 0)
+
+# median CARpoly
+median_CARpoly <- median_CARpoly_raw %>% rename_cols_median_CARpoly
+percentile5_CARpoly <- percentile5_CARpoly_raw %>% filter(year > 0)
+percentile95_CARpoly <- percentile95_CARpoly_raw %>% filter(year > 0)
+
+```
+
+## tidy the data and categorize the numeric variables
+
+```{r}
+
+# create tidy datasets
+cell_tidy <- tidy_combine_cell(median_cell, percentile5_cell, percentile95_cell)
+muni_tidy <- tidy_combine_muni(median_muni, percentile5_muni, percentile95_muni)
+CARpoly_tidy <- tidy_combine_CARpoly(median_CARpoly, percentile5_CARpoly, percentile95_CARpoly)
+
+# categorize numeric variables
+cell_tidy <- categorize_vars_cell_tidy(cell_tidy)
+cell_untidy <- categorize_vars_cell_untidy(median_cell) # untidy version (to compare SC and DC easily)
+
+muni_tidy <- categorize_vars_muni_tidy(muni_tidy)
+muni_untidy <- categorize_vars_muni_untidy(median_muni)
+
+CARpoly_tidy <- categorize_vars_CARpoly_tidy(CARpoly_tidy)
+CARpoly_untidy <- categorize_vars_CARpoly_untidy(median_CARpoly)
+
+```
