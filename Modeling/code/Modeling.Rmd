@@ -102,13 +102,20 @@ CARpoly_untidy <- CARpoly_untidy %>% rename_cols_CARpoly_untidy() %>%
 cell_tidy <- cell_tidy %>% cell_categorize_soy_age()
 cell_untidy <- cell_untidy %>% cell_categorize_soy_age()
 
-# add year_index
+# add year_index and year_factor
 cell_tidy$year_index <- cell_tidy$year - 2003
 cell_untidy$year_index <- cell_untidy$year - 2003
 muni_tidy$year_index <- muni_tidy$year - 2003
 muni_untidy$year_index <- muni_untidy$year - 2003
 CARpoly_tidy$year_index <- CARpoly_tidy$year - 2003
 CARpoly_untidy$year_index <- CARpoly_untidy$year - 2003
+
+cell_tidy$year_factor <- cell_tidy$year %>% as.factor()
+cell_untidy$year_factor <- cell_untidy$year %>% as.factor()
+muni_tidy$year_factor <- muni_tidy$year %>% as.factor()
+muni_untidy$year_factor <- muni_untidy$year %>% as.factor()
+CARpoly_tidy$year_factor <- CARpoly_tidy$year %>% as.factor()
+CARpoly_untidy$year_factor <- CARpoly_untidy$year %>% as.factor()
 
 # choose munis that were planted in 2014 and 2004, merge them 
 #munis_2014 <- muni_tidy[muni_tidy$year == "2014", c("total_planted_area_km2", "Muni_code")]
@@ -120,23 +127,23 @@ CARpoly_untidy$year_index <- CARpoly_untidy$year - 2003
 #soy_age <- rep("neither", length(munis_merged$Muni_code))
 ```
 
-## models for cell scale
+## modeling functions
 
 ```{r}
+
 # list of numeric x variable names, to be used in multicollinearity test
 numeric.x.var.names <- c("onset", "latitude", "longitude", "onset_historicalRange", "year", "year_index")
 
 # do linear model
 # NEEDS year fixed effect, spatial fixed effect, FE vs ME, spatial autocorrelation handling
-do_lm <- function(data, y.var, time.handle, spatial.fe.scale, spatial.auto.model, x.vars, interaction.pairs, 
+do_lm <- function(data, y.var,  spatial.auto.model, x.vars,
                   crop.intensity, mask.soy.area) {
   # options:
-  # x.vars = vector of predictors, names of variables are in quotes
+  # x.vars = vector of predictors, names of variables are in quotes, and interactions as will be written in the lm formula, e.g. onset:latitude
   # crop.intensity = "none", "DC", "SC"
-  # time.handle = "none", "year.trend" (uses year_index as x var), "year.fe" (uses year as fixed or mixed effect)
   # spatial.fe.scale = "none", "regions.4", "municipality", "grid.1deg", "geo.weighted"
   # spatial.auto.model = "none", "spatial.lag", "spatial.error"
-  # interaction.pairs = vector of interactions as will be written in the lm formula, e.g. onset*latitude
+  # interaction.pairs = 
   # mask.soy.area = TRUE or FALSE, if TRUE take out rows with total soy area below min_soy_area
   
   # subset the data  --------------------------------------------------------------------------------------------------------
@@ -154,10 +161,7 @@ do_lm <- function(data, y.var, time.handle, spatial.fe.scale, spatial.auto.model
   
   # define the formula ------------------------------------------------------------------------------------------------------
   # define the basic formula
-  formula.string <- paste(y.var, paste(c(x.vars, interaction.pairs), collapse = " + "), sep = " ~ ")
-  
-  # check for time.handle
-  if (time.handle == "year.trend") {formula.string <- paste(formula.string, "year_index", sep = " + ")}
+  formula.string <- paste(y.var, paste(x.vars, collapse = " + "), sep = " ~ ")
   
   f <- as.formula(formula.string)
 
@@ -166,6 +170,115 @@ do_lm <- function(data, y.var, time.handle, spatial.fe.scale, spatial.auto.model
   model <- eval(bquote(   lm(.(f), data = data.subset)   ))
   
   return(model)
+}
+
+
+# given an initial model, step through potential new predictors and pick the best one. 
+add_predictor_stepwise <- function(data, initial.predictors, y.var, spatial.auto.model,
+                                   new.predictors, crop.intensity, mask.soy.area) {
+  
+  # given an initial set of predictors, add another one based on adj R2
+  # notes:
+  # the data determines the observation scale
+  # interactions to explore are in new.predictors
+  # spatial FE scale is determined in the initial.predictors and interaction terms
+  
+  # calculate adj R2 of initial model
+  initial_model <- do_lm(data = data, 
+              y.var = y.var, 
+              x.vars = initial.predictors, 
+              spatial.auto.model = spatial.auto.model,  
+              crop.intensity = crop.intensity,
+              mask.soy.area = mask.soy.area)
+  
+  initial_adjR2 <- summary(initial_model)$adj.r.squared
+  
+  # initialize 'best' new predictor and best adj_R2
+  best_new_predictor <- "none"
+  current_best_adjR2 <- initial_adjR2
+  
+  # initialize vector to store adj R2
+  new_adjR2s <- c(initial_adjR2)
+  
+  # loop through potential new predictors
+  for (predictor in new.predictors) {
+    
+    # calculate new adjR2 and save it
+    new_model <- do_lm(data = data, 
+              y.var = y.var, 
+              x.vars = c(initial.predictors, predictor), 
+              spatial.auto.model = spatial.auto.model,  
+              crop.intensity = crop.intensity,
+              mask.soy.area = mask.soy.area)
+    
+    new_adjR2 <- summary(new_model)$adj.r.squared
+    new_adjR2s <- c(new_adjR2s, new_adjR2)
+    
+    # if new_adjR2 is better, update the new_best_predictor
+    if (new_adjR2 > current_best_adjR2) {
+      current_best_adjR2 <- new_adjR2
+      best_new_predictor <- predictor
+    }
+  }
+  
+  # return best predictor, its adjR2, and the list of other predictors' R2
+  all_adjR2 <- data.frame(model = c("initial", new.predictors), adjR2 = new_adjR2s)
+  
+  return(list(new_predictor = best_new_predictor, 
+              new_adjR2 = current_best_adjR2,  
+              adjR2_table = all_adjR2))
+}
+
+# runs add_predictor_stepwise to build the final model
+produce_model_stepwise <- function(data, initial.predictors, y.var, spatial.auto.model,
+                                   new.predictors, crop.intensity, mask.soy.area, max.predictors) {
+  # notes
+  # max.predictors = the max allowed number of predictors in the model
+  
+  model_finalized <- FALSE
+  iterations <- 0
+  
+  while (!model_finalized & iterations <= 10) {
+    
+    iterations <- iterations + 1
+    
+    # add a new predictor, save results
+    result <- add_predictor_stepwise(data, initial.predictors, y.var, spatial.auto.model,
+                       new.predictors, crop.intensity, mask.soy.area)
+    
+    new_predictor <- result$new_predictor
+    new_adjR2_table <- result$adjR2_table
+    new_adjR2 <- result$new_adjR2
+
+    print(new_adjR2_table)
+    
+    # check if the model returned 'none' or the max.predictors was reached; if so, model is finalized
+    # if model is finalized, return the model
+    if (new_predictor == "none" | length(initial.predictors) >= max.predictors) { 
+      model_finalized <- TRUE
+      
+      final_predictors <- initial.predictors
+      final_adjR2 <- new_adjR2
+      
+      # run the final model to return the lm output
+      final_model <- do_lm(data = data, 
+              y.var = y.var, 
+              x.vars = final_predictors, 
+              spatial.auto.model = spatial.auto.model,  
+              crop.intensity = crop.intensity,
+              mask.soy.area = mask.soy.area)
+      
+    }
+    
+    # if model isn't done adding predictors, update initial.predictors for the new iteration
+    initial.predictors <- c(initial.predictors, new_predictor)
+    
+  }
+  
+  # return
+  return(list(final_model = final_model,
+              final_predictors = final_predictors,
+              final_adjR2 = final_adjR2))
 }
 
 evaluate_model <- function(lm_results, test.x.vars, orig_data, title) {
@@ -182,13 +295,54 @@ evaluate_model <- function(lm_results, test.x.vars, orig_data, title) {
   print(test.corr)
 }
 
+
+
+
+```
+
+## building a model stepwise automated
+
+```{r}
+# remove variables
+rm(data)
+rm(initial.predictors)
+rm(y.var)
+rm(spatial.auto.model)
+rm(new.predictors)
+rm(crop.intensity)
+rm(mask.soy.area)
+
+# test produce_model_stepwise
+data <- cell_tidy
+initial.predictors <- c("onset", "intensity")
+y.var <- "plant_median"
+spatial.auto.model <- "none"
+new.predictors <- c("latitude", "longitude", "latitude:longitude", # for spatial effects
+                    "year_factor", # for time effects
+                    "soy_age", "onset_historicalRange", # other predictors
+                    "onset:latitude", "onset:longitude", # interactions: for spatial effects
+                    "onset:year_factor", # interactions: for time effects
+                    "onset:intensity", "onset:soy_age") # interactions: other predictors
+crop.intensity <- "none"
+mask.soy.area <- TRUE
+
+
+model <- produce_model_stepwise(data, initial.predictors, y.var, spatial.auto.model,
+                       new.predictors, crop.intensity, mask.soy.area, 6)
+evaluate_model(model$final_model, model$final_predictors, data, "output from produce_model_stepwise")
+
+
+```
+
+## building a model stepwise by hand
+
+```{r}
+
 # Reduced model -------------------------------------------------------------------------------------------
 test.y.var <- "plant_median"
 # , "latitude", "longitude", "intensity", "soy_age", "region", "onset_historicalRange", "year_index"
 test.x.vars <- c("onset", "intensity", "year", "region", "latitude", "soy_age")
 # note, doing x*y will create x + y + x:y, while x:y doesn't necessarily include x + y
-test.interaction.vars <- c() #c("onset:latitude", "onset:longitude", "onset:intensity", "onset:soy_age", "onset:region")
-test.time.handle <- "none"
 test.spatial.fe.scale <- "none"
 test.spatial.auto.model <- "none"
 test.crop.intensity <- "none"
@@ -196,32 +350,23 @@ test.mask.soy.area <- TRUE
 test1 <- do_lm(data = cell_tidy, 
               y.var = test.y.var, 
               x.vars = test.x.vars, 
-              interaction.pairs = test.interaction.vars,
-              time.handle = test.time.handle, 
-              spatial.fe.scale = test.spatial.fe.scale, 
               spatial.auto.model = test.spatial.auto.model,  
               crop.intensity = test.crop.intensity,
               mask.soy.area = test.mask.soy.area)
+test1.adjR2 <- summary(test1)$adj.r.squared
+print(test1.adjR2)
 
-print('reduced model')
-evaluate_model(test1, test.x.vars, cell_tidy, "reduced model")
 
 # 'Fuller' model -----------------------------------------------------------------------------------------
 
 test.x.vars <- c("onset", "intensity", "year", "region", "latitude", "soy_age")
-test.interaction.vars <- c("onset:region")
 test2 <- do_lm(data = cell_tidy, 
               y.var = test.y.var, 
               x.vars = test.x.vars, 
-              interaction.pairs = test.interaction.vars,
-              time.handle = test.time.handle, 
-              spatial.fe.scale = test.spatial.fe.scale, 
               spatial.auto.model = test.spatial.auto.model,  
               crop.intensity = test.crop.intensity,
               mask.soy.area = test.mask.soy.area)
-
-print('full model')
-evaluate_model(test2, test.x.vars, cell_tidy, "full model")
+test2.adjR2 <- summary(test2)$adj.r.squared
 
 anova(test1, test2)
 ```
