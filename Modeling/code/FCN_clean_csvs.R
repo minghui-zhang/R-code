@@ -320,7 +320,7 @@ categorize_vars_CARpoly_untidy <- function(median_CARpoly) {
 # categorize cells as new or old or neither in planted soy age
 cell_categorize_soy_age <- function(cell) {
   
-  soy_age <- rep("neither", sum(cell$year == "2004"))
+  soy_age <- rep("z_neither", sum(cell$year == "2004"))
   cell_area_2004 <- cell[cell$year == "2004", "total_planted_area_km2"]
   cell_area_2014 <- cell[cell$year == "2014", "total_planted_area_km2"]
   soy_age[cell_area_2004 < min_soy_area & cell_area_2014 >= min_soy_area] <- "new"
@@ -504,3 +504,61 @@ tidy_CARpoly <- function(CARpoly) {
   return(CARpoly_tidy)
 }
 
+delete_cols_CARpoly_tidy <- function(CARpoly_tidy) {
+  output = CARpoly_tidy %>% subset(select = -c(double_plant_median, single_plant_median,
+                                               double_harvest_median, single_harvest_median,
+                                               double_plant_percentile5, single_plant_percentile5,
+                                               double_harvest_percentile5, single_harvest_percentile5,
+                                               double_delay_percentile5, single_delay_percentile5,
+                                               double_plant_percentile95, single_plant_percentile95,
+                                               double_harvest_percentile95, single_harvest_percentile95,
+                                               double_delay_percentile95, single_delay_percentile95) )
+  return(output)
+}
+
+rename_cols_CARpoly_untidy <- function(CARpoly_untidy) {
+  output = CARpoly_untidy %>% rename(
+    double_plant = double_plant_median,
+    double_harvest = double_harvest_median,
+    double_delay = double_delay_median,
+    single_plant = single_plant_median,
+    single_harvest = single_harvest_median,
+    single_delay = single_delay_median
+  )
+  return(output)
+}
+
+delete_cols_CARpoly_untidy <- function(CARpoly_untidy) {
+  output = CARpoly_untidy %>% subset(select = -c(double_plant_percentile5, single_plant_percentile5,
+                                                 double_harvest_percentile5, single_harvest_percentile5,
+                                                 double_delay_percentile5, single_delay_percentile5,
+                                                 double_plant_percentile95, single_plant_percentile95,
+                                                 double_harvest_percentile95, single_harvest_percentile95,
+                                                 double_delay_percentile95, single_delay_percentile95) )
+  return(output)
+}
+
+# spatial analysis
+join_CARpoly_to_muni <- function(CARpoly_raw) {
+  
+  # turn CARpoly info into spatial points data frame
+  CARpoly_spdf <- CARpoly_raw %>% filter(year > 0)
+  CARpoly_spdf$latitude_1 <- CARpoly_spdf$latitude
+  CARpoly_spdf$longitude_1 <- CARpoly_spdf$longitude
+  
+  CARpoly_spdf$poly.ids <- 1:nrow(CARpoly_spdf) 
+  
+  coordinates(CARpoly_spdf)<-~longitude_1+latitude_1
+  crs(CARpoly_spdf) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+  
+  # turn spatialxxxDF into sf objects
+  munis_sf <- st_as_sf(munis)
+  CARpoly_sf <- st_as_sf(CARpoly_spdf)
+  
+  # join and rename
+  CARpoly_joined <- st_join(CARpoly_sf, left = FALSE, munis_sf) 
+  CARpoly_raw <- CARpoly_joined
+  st_geometry(CARpoly_raw) <- NULL
+  
+  return(CARpoly_raw)
+}
