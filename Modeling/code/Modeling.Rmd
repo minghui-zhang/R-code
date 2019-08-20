@@ -117,6 +117,12 @@ muni_untidy$year_factor <- muni_untidy$year %>% as.factor()
 CARpoly_tidy$year_factor <- CARpoly_tidy$year %>% as.factor()
 CARpoly_untidy$year_factor <- CARpoly_untidy$year %>% as.factor()
 
+# use muni_code as factor
+cell_tidy$Muni_code_factor <- cell_tidy$Muni_code %>% as.factor()
+cell_untidy$Muni_code_factor <- cell_untidy$Muni_code %>% as.factor()
+CARpoly_tidy$Muni_code_factor <- CARpoly_tidy$Muni_code %>% as.factor()
+CARpoly_untidy$Muni_code_factor <- CARpoly_untidy$Muni_code %>% as.factor()
+
 # choose munis that were planted in 2014 and 2004, merge them 
 #munis_2014 <- muni_tidy[muni_tidy$year == "2014", c("total_planted_area_km2", "Muni_code")]
 #munis_2004 <- muni_tidy[muni_tidy$Muni_code %in% munis_2014$Muni_code & 
@@ -313,16 +319,16 @@ rm(crop.intensity)
 rm(mask.soy.area)
 
 # test produce_model_stepwise
-data <- cell_tidy
+data <- muni_tidy
 initial.predictors <- c("onset", "intensity")
 y.var <- "plant_median"
 spatial.auto.model <- "none"
-new.predictors <- c("latitude", "longitude", "latitude:longitude", # for spatial effects
-                    "year_factor", # for time effects
-                    "soy_age", "onset_historicalRange", # other predictors
-                    "onset:latitude", "onset:longitude", # interactions: for spatial effects
+new.predictors <- c("latitude", "longitude", "region", # for spatial effects
+                     "year_factor", # for time effects
+                    "onset_historicalRange",  # other predictors
+                    "onset:latitude", "onset:longitude", "onset:region", # interactions: for spatial effects
                     "onset:year_factor", # interactions: for time effects
-                    "onset:intensity", "onset:soy_age") # interactions: other predictors
+                    "onset:intensity") # interactions: other predictors
 crop.intensity <- "none"
 mask.soy.area <- TRUE
 
