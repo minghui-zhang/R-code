@@ -16,28 +16,46 @@ library(raster)
 library(sf)
 library(sp)
 library(tmap)
+library(viridis)
+library(spdep)
+library(spatialreg)
 
 #E:/R-code/Modeling/code/FCN_clean_csvs.R
 #~/Documents/R-code
-source('~/Documents/R-code/Modeling/code/FCN_clean_csvs.R')
+source('E:/R-code/Modeling/code/FCN_clean_csvs.R')
 
-median_cell_raw <- read.csv('~/Documents/R-code/Modeling/data/median_onset_cell_v2.csv')
-percentile5_cell_raw <- read.csv('~/Documents/R-code/Modeling/data/percentile5_onset_cell_v2.csv')
-percentile95_cell_raw <- read.csv('~/Documents/R-code/Modeling/data/percentile95_onset_cell_v2.csv')
+median_cell_raw <- read.csv('E:/R-code/Modeling/data/median_onset_cell_v2.csv')
+percentile5_cell_raw <- read.csv('E:/R-code/Modeling/data/percentile5_onset_cell_v2.csv')
+percentile95_cell_raw <- read.csv('E:/R-code/Modeling/data/percentile95_onset_cell_v2.csv')
 
-median_muni_raw <- read.csv('~/Documents/R-code/Modeling/data/median_muni_v2.csv')
-percentile5_muni_raw <- read.csv('~/Documents/R-code/Modeling/data/percentile5_muni_v2.csv')
-percentile95_muni_raw <- read.csv('~/Documents/R-code/Modeling/data/percentile95_muni_v2.csv')
+median_muni_raw <- read.csv('E:/R-code/Modeling/data/median_muni_v2.csv')
+percentile5_muni_raw <- read.csv('E:/R-code/Modeling/data/percentile5_muni_v2.csv')
+percentile95_muni_raw <- read.csv('E:/R-code/Modeling/data/percentile95_muni_v2.csv')
 
-median_CARpoly_raw <- read.csv('~/Documents/R-code/Modeling/data/median_CARpoly_v2.csv')
-percentile5_CARpoly_raw <- read.csv('~/Documents/R-code/Modeling/data/percentile5_CARpoly_v2.csv')
-percentile95_CARpoly_raw <- read.csv('~/Documents/R-code/Modeling/data/percentile95_CARpoly_v2.csv')
+median_CARpoly_raw <- read.csv('E:/R-code/Modeling/data/median_CARpoly_v2.csv')
+percentile5_CARpoly_raw <- read.csv('E:/R-code/Modeling/data/percentile5_CARpoly_v2.csv')
+percentile95_CARpoly_raw <- read.csv('E:/R-code/Modeling/data/percentile95_CARpoly_v2.csv')
 
-grid_1deg <- readOGR(dsn = '~/Documents/R-code/Modeling/data/shp/grid_1deg', layer = 'grid_1deg')
-munis <- readOGR(dsn = '~/Documents/R-code/Modeling/data/shp/munis', layer = 'munis_SHP')
+grid_1deg <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/grid_1deg', layer = 'grid_1deg')
+munis <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/munis', layer = 'munis_SHP')
 crs(munis) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
   
-cell_shp <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
+#cell_shp <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
+
+
+```
+
+## read and clean spatial data
+
+```{r}
+
+cell_sf <- st_read(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
+
+cell_sf_tidy <- cell_sf %>% tidy_by_intensity_plant("SC_plant", "DC_plant") %>%
+            tidy_by_intensity_delay("SC_delay", "DC_delay") %>%
+            dplyr::select(-c(SC_harvest, DC_harvest))
+cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
+
 ```
 
 ## spatial join muni to CARpolys
@@ -79,6 +97,7 @@ percentile95_muni <- percentile95_muni_raw %>% filter(year > 0)
 
 ```
 
+
 ## tidy the data and categorize the numeric variables
 
 ```{r}
@@ -87,6 +106,8 @@ percentile95_muni <- percentile95_muni_raw %>% filter(year > 0)
 cell_tidy <- tidy_combine_cell(median_cell, percentile5_cell, percentile95_cell)
 muni_tidy <- tidy_combine_muni(median_muni, percentile5_muni, percentile95_muni)
 CARpoly_tidy <- tidy_CARpoly(CARpoly_raw)
+
+
 
 # categorize numeric variables
 cell_tidy <- categorize_vars_cell_tidy(cell_tidy)
@@ -345,73 +366,146 @@ evaluate_model(model$final_model, model$final_predictors, data, "output from pro
 
 ```
 
-
-## spatial lag and error models
+## spatial studies: first, check residual autocorrelation in basic OLS
 
 ```{r}
-
 # do basic OLS model and see if residuals are autocorrelated ----------------------------
-f1 <- plant_median ~ onset + intensity + latitude + year_index + latitude + onset:soy_age + onset:intensity
-m1 <- lm(f1, data=cell_tidy)
-summary(m1)
-cell_tidy$residuals <- residuals(m1)
-brks <- quantile(cell_tidy$residuals, 0:(grps-1)/(grps-1), na.rm=TRUE)
-spplot(cell_tidy, "residuals", at=brks, col.regions=rev(brewer.pal(grps, "RdBu")), col="black")
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+model_ols <- lm(plant ~ onset + intensity + lat + year_index + onset:intensity, data=cell_sf_tidy)
+summary(model_ols)
+
+cell_sf_tidy$residuals <- residuals(model_ols)
+
+#ggplot(cell_sf_tidy) +
+#  geom_sf(aes(fill = residuals)) +
+#  scale_fill_viridis() +
+#  ggtitle("Residuals for basic OLS") +
+#  theme_bw()
+
 
 # see if basic OLS residuals are autocorrelated with scatterplot -------------------------
-library(spdep)
-nb <- poly2nb(cell_tidy)
-resnb <- sapply(nb, function(x) mean(hh$residuals[x]))
-cor(hh$residuals, resnb)
-plot(cell_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals')
-lw <- nb2listw(nb)
-moran.mc(hh$residuals, lw, 999)
 
-# spatial lag model ---------------------------------------------------------------------
-m1s = lagsarlm(f1, data=cell_tidy, lw, tol.solve=1.0e-30)
-summary(m1s)
-moran.mc(cell_tidy$residuals, lw, 999)
-brks <- quantile(cell_tidy$residuals, 0:(grps-1)/(grps-1), na.rm=TRUE)
-p <- spplot(cell_tidy, "residuals", at=brks, col.regions=rev(brewer.pal(grps, "RdBu")), col="transparent")
-print( p + layer(sp.polygons(cell_tidy)) )
-
-# spatial error model
-m1e = errorsarlm(f1, data=hh, lw, tol.solve=1.0e-30)
-summary(m1e)
-hh$residuals <- residuals(m1e)
-moran.mc(hh$residuals, lw, 999)
-brks <- quantile(hh$residuals, 0:(grps-1)/(grps-1), na.rm=TRUE)
-p <- spplot(hh, "residuals", at=brks, col.regions=rev(brewer.pal(grps, "RdBu")),
- col="transparent")
-print( p + layer(sp.polygons(hh)) )
+nb <- poly2nb(cell_sf_tidy)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
+cor(cell_sf_tidy$residuals, resnb)
+plot(cell_sf_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_basic_ols <- moran.mc(cell_sf_tidy$residuals, lw, 999, zero.policy = TRUE)
+print('moran with basic ols, all years')
+print(moran_basic_ols)
 
 ```
 
-## spatially weighted regression, try 1
+## spatial studies: check residual autocorrelation in basic OLS for one year
+
+```{r}
+# test basic OLS for one year only (to be compared to spatial lag and spatial error) ----------------------------
+year_oi <- 2013
+
+# filter a specific year
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+model_ols <- lm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year)
+summary(model_ols)
+
+cell_sf_tidy_year$residuals <- residuals(model_ols)
+
+ggplot(cell_sf_tidy_year) +
+  geom_sf(aes(fill = residuals)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Residuals for basic OLS,", year_oi)) +
+  theme_bw()
+
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals[x]))
+plot(cell_sf_tidy_year$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Basic OLS,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
+print('moran with basic ols, one year')
+print(moran_basic_ols)
+
+```
+
+## spatial studies: second, fit spatial lag and error models
+source: https://rspatial.org/analysis/7-spregression.html
+
+```{r}
+year_oi <- 2013
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+# filter a specific year
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+
+nb <- poly2nb(cell_sf_tidy_year)
+lw <- nb2listw(nb, zero.policy = TRUE)
+
+# spatial lag model ---------------------------------------------------------------------
+model_lag = lagsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_lag)
+
+cell_sf_tidy_year$residuals_lag <- residuals(model_lag)
+
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
+cor(cell_sf_tidy_year$residuals, resnb)
+plot(cell_sf_tidy_year$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
+
+ggplot(cell_sf_tidy_year) +
+  geom_sf(aes(fill = residuals_lag)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Residuals for spatial lag model,", year_oi)) +
+  theme_bw()
+
+# spatial error model ---------------------------------------------------------------------
+model_error = errorsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_error)
+
+cell_sf_tidy_year$residuals_error <- residuals(model_error)
+
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_error[x]))
+cor(cell_sf_tidy_year$residuals_error, resnb)
+plot(cell_sf_tidy_year$residuals_error, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial error,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals_error, lw, 999, zero.policy = TRUE)
+
+ggplot(cell_sf_tidy_year) +
+  geom_sf(aes(fill = residuals_error)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Residuals for spatial error model,", year_oi)) +
+  theme_bw()
+
+```
+
+
+## spatial studies: spatially weighted regression
 source: 
 http://www.spatialanalysisonline.com/An%20Introduction%20to%20Spatial%20Data%20Analysis%20in%20R.pdf
 
 ```{r}
 library(spgwr) # spatially weighted regression
 
-# first, run lm over all points, and look at autocorrelation in residuals
-model <- lm(plant_median ~ onset, intensity, latitude, year_index, latitude, onset:soy_age, onset:intensity, data = cell_tidy)
-resids<-residuals(model)
-map.resids <- cbind(cell_tidy, resids)
-# we need to rename the column header from the resids file
-# in this case its the 6th column of map.resids
-names(map.resids)[6] <- "resids" # CHANGE THE 6 HERE
-qtm(map.resids, fill = "resids") # from tmap
+year_oi <- 2013
 
-#second, run GWR
-#calculate kernel bandwidth
-GWRbandwidth <- gwr.sel(plant_median ~ onset, intensity, latitude, year_index, 
-                        latitude, onset:soy_age, onset:intensity, 
-                        data = cell_tidy, adapt =TRUE)
+# filter for a specific year, then turn sf object into SPDF
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+cell_spdf_tidy_year <- as(cell_sf_tidy_year, 'Spatial')
+
+#run GWR
+#calculate kernel bandwidth (takes a long time)
+GWRbandwidth <- gwr.sel(plant ~ onset + intensity + lat + onset:intensity, 
+data = cell_spdf_tidy_year, adapt =TRUE)
+
 #run the gwr model
-gwr.model = gwr(plant_median ~ onset, intensity, latitude, year_index, 
-                        latitude, onset:soy_age, onset:intensity, 
-                        data = cell_tidy, adapt=GWRbandwidth, hatmatrix=TRUE, se.fit=TRUE)
+gwr.model <- gwr(plant ~ onset + intensity + lat + onset:intensity, 
+                        data = cell_spdf_tidy_year, adapt=GWRbandwidth, hatmatrix=TRUE, se.fit=TRUE)
 #print the results of the model
 gwr.model
 
@@ -446,6 +540,9 @@ print(map2, vp=viewport(layout.pos.col = 2, layout.pos.row =1))
 print(map3, vp=viewport(layout.pos.col = 1, layout.pos.row =2))
 print(map4, vp=viewport(layout.pos.col = 2, layout.pos.row =2))
 ```
+
+
+
 
 
 ## spatially weighted regression, try 2
