@@ -402,7 +402,7 @@ print(moran_basic_ols)
 
 ```{r}
 # test basic OLS for one year only (to be compared to spatial lag and spatial error) ----------------------------
-year_oi <- 2013
+year_oi <- 2006
 
 # filter a specific year
 cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
@@ -431,7 +431,7 @@ print(moran_basic_ols)
 source: https://rspatial.org/analysis/7-spregression.html
 
 ```{r}
-year_oi <- 2013
+year_oi <- 2006
 
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
 
@@ -450,10 +450,10 @@ cell_sf_tidy_year$residuals_lag <- residuals(model_lag)
 
 nb <- poly2nb(cell_sf_tidy_year)
 resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
-cor(cell_sf_tidy_year$residuals, resnb)
-plot(cell_sf_tidy_year$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
+plot(cell_sf_tidy_year$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
 lw <- nb2listw(nb, zero.policy = TRUE)
-moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
+moran_lag <- moran.mc(cell_sf_tidy_year$residuals_lag, lw, 999, zero.policy = TRUE)
+moran_lag
 
 ggplot(cell_sf_tidy_year) +
   geom_sf(aes(fill = residuals_lag)) +
@@ -470,10 +470,10 @@ cell_sf_tidy_year$residuals_error <- residuals(model_error)
 
 nb <- poly2nb(cell_sf_tidy_year)
 resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_error[x]))
-cor(cell_sf_tidy_year$residuals_error, resnb)
 plot(cell_sf_tidy_year$residuals_error, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial error,", year_oi))
 lw <- nb2listw(nb, zero.policy = TRUE)
-moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals_error, lw, 999, zero.policy = TRUE)
+moran_error <- moran.mc(cell_sf_tidy_year$residuals_error, lw, 999, zero.policy = TRUE)
+moran_error
 
 ggplot(cell_sf_tidy_year) +
   geom_sf(aes(fill = residuals_error)) +
@@ -491,7 +491,7 @@ http://www.spatialanalysisonline.com/An%20Introduction%20to%20Spatial%20Data%20A
 ```{r}
 library(spgwr) # spatially weighted regression
 
-year_oi <- 2013
+year_oi <- 2006
 
 # filter for a specific year, then turn sf object into SPDF
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
@@ -510,120 +510,44 @@ gwr.model <- gwr(plant ~ onset + intensity + lat + onset:intensity,
 gwr.model
 
 # third, map the results 
-# HOW TO SELECT ONLY CERTAIN YEARS??? DO MODEL FOR SELECT YEAR?
+
 results <-as.data.frame(gwr.model$SDF)
-gwr.map <- cbind(cell_tidy, as.matrix(results))
+gwr.map <- cbind(cell_spdf_tidy_year, as.matrix(results))
 
 # create tmap objects
-map1 <- tm_shape(gwr.map) + 
-  tm_fill("localR2", n = 5, style = "quantile", title = "Local R2") +
-  tm_layout(frame = FALSE, legend.text.size = 0.5, legend.title.size = 0.6)
-map2 <- tm_shape(gwr.map) + tm_fill("cell_tidy.onset", n = 5, style = "quantile",
-title = "Onset Coefficient") +
-tm_layout(frame = FALSE, legend.text.size = 0.5, legend.title.size = 0.6)
-map3 <- tm_shape(gwr.map) + tm_fill("Cell_tidy.intensity", n = 5, style = "quantile",
-title = "Intensity Coefficient") +
-tm_layout(frame = FALSE, legend.text.size = 0.5, legend.title.size = 0.6)
-map4 <- tm_shape(gwr.map) + tm_fill("cell_tidy.year_index", n = 5, style = "quantile",
-title = "Year Coefficient") +
-tm_layout(frame = FALSE, legend.text.size = 0.5, legend.title.size = 0.6)
+map_localR2 <- tm_shape(gwr.map) + 
+  tm_fill("localR2", n = 5, style = "quantile") +
+  tm_layout(title = paste("Local R2,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-library(grid)
-library(gridExtra)
-# creates a clear grid
-grid.newpage()
-# assigns the cell size of the grid, in this case 2 by 2
-pushViewport(viewport(layout=grid.layout(2,2)))
-# prints a map object into a defined cell
-print(map1, vp=viewport(layout.pos.col = 1, layout.pos.row =1))
-print(map2, vp=viewport(layout.pos.col = 2, layout.pos.row =1))
-print(map3, vp=viewport(layout.pos.col = 1, layout.pos.row =2))
-print(map4, vp=viewport(layout.pos.col = 2, layout.pos.row =2))
-```
+map_onset <- tm_shape(gwr.map) + 
+  tm_fill("onset.1", n = 5, style = "quantile") +
+  tm_layout(title = paste("Onset Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
+map_intensity <- tm_shape(gwr.map) + 
+  tm_fill("intensitySC", n = 5, style = "quantile") +
+  tm_layout(title = paste("IntensitySC Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
+map_latitude <- tm_shape(gwr.map) + 
+  tm_fill("lat.1", n = 5, style = "quantile") +
+  tm_layout(title = paste("Latitude Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
+map_onset_se <- tm_shape(gwr.map) + 
+  tm_fill("onset_se", n = 5, style = "quantile") +
+  tm_layout(title = paste("Onset Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
+map_intensity_se <- tm_shape(gwr.map) + 
+  tm_fill("intensitySC_se", n = 5, style = "quantile") +
+  tm_layout(title = paste("IntensitySC Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-## spatially weighted regression, try 2
-source: https://rspatial.org/analysis/6-local_regression.html
+map_latitude_se <- tm_shape(gwr.map) + 
+  tm_fill("lat_se", n = 5, style = "quantile") +
+  tm_layout(title = paste("Latitude Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-```{r}
-
-# compute a model for grid cells
-
-
-r <- raster(MT_boundary)
-res(r) <- 50000 # 50km
-xy <- xyFromCell(r, 1:ncell(r))
-
-#For each cell, we need to select a number of observations, let’s say within 50 km of the center of each cell (thus the data that are used in different cells overlap). And let’s require at least 50 observations to do a regression.
-
-crds <- coordinates(cell_tidy)
-
-regfun2 <- function(d)  {
- m <- glm(plant_median ~ onset, intensity, latitude, year_index, 
-                        latitude, onset:soy_age, onset:intensity, 
-                        data = cell_tidy)
- coefficients(m)
-}
-
-#Run the model for al cells if there are at least 50 observations within a radius of 50 km.
-
-res <- list()
-for (i in 1:nrow(xy)) {
-    d <- sqrt((xy[i,1]-crds[,1])^2 + (xy[i,2]-crds[,2])^2)
-    j <- which(d < 50000)
-    if (length(j) > 49) {
-        d <- hd[j,]
-        res[[i]] <- regfun2(d)
-    } else {
-        res[[i]] <- NA
-    }
-}
-
-#For each cell get the onset coefficient:
-
-inc <- sapply(res, function(x) x['onset'])
-
-#Use these values in a RasterLayer
-
-rinc <- setValues(r, inc)
-plot(rinc)
-plot(cell_tidy, add=T)
-
-Moran(rinc)
-```
-
-## spatially weighted regression, try 3
-source: https://rspatial.org/analysis/6-local_regression.html
-
-```{r}
-#Create a RasterLayer with the correct extent
-
-r <- raster(cell_tidy)
-
-#Set to a desired resolution. I choose 25 km
-
-res(r) <- 25000
-
-#I only want cells inside of CA, so I add some more steps.
-
-ca <- rasterize(cell_tidy, r)
-#Extract the coordinates that are not NA.
-
-fitpoints <- rasterToPoints(ca)
-
-# specify the model as gwr.model
-
-sp <- gwr.model$SDF
-spplot(sp)
-cells <- cellFromXY(r, fitpoints)
-dd <- as.matrix(data.frame(sp))
-b <- brick(r, values=FALSE, nl=ncol(dd))
-b[cells] <- dd
-names(b) <- colnames(dd)
-plot(b)
-
-
+map_localR2
+map_onset
+map_intensity
+map_latitude
+map_onset_se
+map_intensity_se
+map_latitude_se
 ```
