@@ -366,7 +366,7 @@ evaluate_model(model$final_model, model$final_predictors, data, "output from pro
 
 ```
 
-## spatial studies: first, check residual autocorrelation in basic OLS
+## spatial studies: first, check residual autocorrelation in basic OLS (for all years)
 
 ```{r}
 # do basic OLS model and see if residuals are autocorrelated ----------------------------
@@ -402,7 +402,7 @@ print(moran_basic_ols)
 
 ```{r}
 # test basic OLS for one year only (to be compared to spatial lag and spatial error) ----------------------------
-year_oi <- 2006
+year_oi <- 2014
 
 # filter a specific year
 cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
@@ -425,9 +425,22 @@ moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = 
 print('moran with basic ols, one year')
 print(moran_basic_ols)
 
+# plot actual plant and onset to check if the correct data is being used
+ggplot(cell_sf_tidy_year) +
+  geom_sf(aes(fill = plant)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Plant date", year_oi)) +
+  theme_bw()
+
+ggplot(cell_sf_tidy_year) +
+  geom_sf(aes(fill = onset)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Onset date", year_oi)) +
+  theme_bw()
+
 ```
 
-## spatial studies: second, fit spatial lag and error models
+## spatial studies: second, fit spatial lag and error models (for one year)
 source: https://rspatial.org/analysis/7-spregression.html
 
 ```{r}
@@ -484,19 +497,22 @@ ggplot(cell_sf_tidy_year) +
 ```
 
 
-## spatial studies: spatially weighted regression
+## spatial studies: spatially weighted regression (for one year)
 source: 
 http://www.spatialanalysisonline.com/An%20Introduction%20to%20Spatial%20Data%20Analysis%20in%20R.pdf
 
 ```{r}
 library(spgwr) # spatially weighted regression
 
-year_oi <- 2006
+year_oi <- 2014
 
 # filter for a specific year, then turn sf object into SPDF
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
 cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
 cell_spdf_tidy_year <- as(cell_sf_tidy_year, 'Spatial')
+
+# for app.R
+saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
 
 #run GWR
 #calculate kernel bandwidth (takes a long time)
