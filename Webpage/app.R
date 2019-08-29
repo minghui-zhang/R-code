@@ -34,7 +34,7 @@ ui <- navbarPage("Crop Timing", id = "nav",
     leafletOutput("mymap",height = 1000)
   ),
   
-  tabPanel("Data Explorer")
+  tabPanel("How this data was created")
 )
 
 server <- function(input, output) {

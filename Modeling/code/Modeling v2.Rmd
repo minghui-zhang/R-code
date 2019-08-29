@@ -9,6 +9,7 @@ output: html_document
 
 library(ggplot2)
 library(tidyverse)
+library(broom)
 library(dplyr)
 library(rgdal)
 library(rgeos)
@@ -19,6 +20,8 @@ library(tmap)
 library(viridis)
 library(spdep)
 library(spatialreg)
+library(splm)
+library(lmtest)
 
 #E:/R-code/Modeling/code/FCN_clean_csvs.R
 #~/Documents/R-code
@@ -371,7 +374,9 @@ evaluate_model(model$final_model, model$final_predictors, data, "output from pro
 ```{r}
 # do basic OLS model and see if residuals are autocorrelated ----------------------------
 
-cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na %>%
+                              mutate(year_factor = as.factor(year))
+     
 
 model_ols <- lm(plant ~ onset + intensity + lat + year_index + onset:intensity, data=cell_sf_tidy)
 summary(model_ols)
@@ -385,7 +390,7 @@ cell_sf_tidy$residuals <- residuals(model_ols)
 #  theme_bw()
 
 
-# see if basic OLS residuals are autocorrelated with scatterplot -------------------------
+# see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
 
 nb <- poly2nb(cell_sf_tidy)
 resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
@@ -396,7 +401,71 @@ moran_basic_ols <- moran.mc(cell_sf_tidy$residuals, lw, 999, zero.policy = TRUE)
 print('moran with basic ols, all years')
 print(moran_basic_ols)
 
+# see if basic OLS residuals are temporally autocorrelated --------------------------------------
+
+# create observation data frame, for DC only. 
+# need to rename cell_ID so the same cell_ID can correspond to multiple years
+DC_cell <- cell_sf_tidy[cell_sf_tidy$intensity == "DC",] 
+
+# filter out all cells where there isn't data for all years
+st_geometry(DC_cell) <- NULL
+DC_cell <- DC_cell[complete.cases(DC_cell),]
+cells_list <- list()
+i <- 1
+for (year in 2004:2014) {
+  cells_in_year <- DC_cell[DC_cell$year == year,]
+  cells_list[[i]] <- cells_in_year$label
+  i <- i + 1
+}
+full_data_cells <- Reduce(intersect, cells_list)
+DC_cell <- DC_cell[DC_cell$label %in% full_data_cells, ]
+
+# create observation data frame, for SC only. 
+# need to rename cell_ID so the same cell_ID can correspond to multiple years
+SC_cell <- cell_sf_tidy[cell_sf_tidy$intensity == "SC",] 
+
+# filter out all cells where there isn't data for all years
+st_geometry(SC_cell) <- NULL
+SC_cell <- SC_cell[complete.cases(SC_cell),]
+cells_list <- list()
+i <- 1
+for (year in 2004:2014) {
+  cells_in_year <- SC_cell[SC_cell$year == year,]
+  cells_list[[i]] <- cells_in_year$label
+  i <- i + 1
+}
+full_data_cells <- Reduce(intersect, cells_list)
+SC_cell <- SC_cell[SC_cell$label %in% full_data_cells, ]
+
+
+DC_nested_cell <- group_by(data.frame(DC_cell), label) %>% nest()
+SC_nested_cell <- group_by(data.frame(SC_cell), label) %>% nest()
+
+dwtest_one_cell <- function(data) {
+  dwtest(residuals ~ 1, data = data)
+}
+
+DC_cell <- DC_nested_cell %>%
+  mutate(dwtest = map(data, dwtest_one_cell)) %>%
+  mutate(test_df = map(dwtest, tidy)) %>%
+  unnest(test_df)
+
+SC_cell <- SC_nested_cell %>%
+  mutate(dwtest = map(data, dwtest_one_cell)) %>%
+  mutate(test_df = map(dwtest, tidy)) %>%
+  unnest(test_df)
+
+# calculate proportion of p values below 5% significance, with Bonferroni correction
+
+DC_percent_auto <- mean(DC_cell$p.value < 0.05/nrow(DC_cell)) * 100
+SC_percent_auto <- mean(SC_cell$p.value < 0.05/nrow(SC_cell)) * 100
+
+print(DC_percent_auto)
+print(SC_percent_auto)
+
+
 ```
+
 
 ## spatial studies: check residual autocorrelation in basic OLS for one year
 
@@ -439,6 +508,97 @@ ggplot(cell_sf_tidy_year) +
   theme_bw()
 
 ```
+
+## temporal basis functions with SpatioTemporal
+## NOTE, DIDN'T INCLUDE ONSET, INTENSITY, ONSET:INTENSITY AS COVARIATE HERE
+
+```{r}
+
+library(SpatioTemporal)
+
+clean_cell_ID <- function(cell_ID) {
+  strsplit(cell_ID, "_")[[1]][2]
+}
+
+# create observation data frame, for DC only. 
+# need to rename cell_ID so the same cell_ID can correspond to multiple years
+cell_tidy_DC <- cell_tidy[cell_tidy$intensity == "DC",] 
+cell_tidy_DC$cell_ID <- sapply(as.character(cell_tidy_DC$cell_ID), clean_cell_ID)
+
+# filter out all cells where there isn't data for all years
+cell_tidy_DC <- cell_tidy_DC[complete.cases(cell_tidy_DC),]
+cells_list <- list()
+i <- 1
+for (year in 2004:2014) {
+  cells_in_year <- cell_tidy_DC[cell_tidy_DC$year == year,]
+  cells_list[[i]] <- cells_in_year$cell_ID
+  i <- i + 1
+}
+full_data_cells <- Reduce(intersect, cells_list)
+cell_tidy_DC <- cell_tidy_DC[cell_tidy_DC$cell_ID %in% full_data_cells, ]
+
+cell_for_STdata <- cell_tidy_DC %>%
+                        transmute(ID = cell_ID,
+                                  obs = plant_median,
+                                  date = year)
+
+
+# create covariate data frame. for now, just use lat and lon
+covars <- dplyr::select(cell_tidy_DC, cell_ID, latitude, longitude) %>%
+              unique() %>%
+              dplyr::rename(ID = cell_ID) #split(cell_sf_tidy, cell_sf_tidy$year)
+
+STdata <- createSTdata(cell_for_STdata, covars = covars)
+
+#plot(STdata, "acf", ID = "+4340+4285")
+
+# temporal basis functions
+STdata <- updateTrend(STdata, n.basis = 2)
+
+#plot(STdata, "acf", ID = "+4340+4285")
+
+beta.lm <- estimateBetaFields(STdata)
+
+beta.lm$beta <- data.frame(beta.lm$beta)
+beta.lm$beta.sd <- data.frame(beta.lm$beta.sd)
+beta.lm$beta$ID <- row.names(beta.lm$beta)
+BETA <- cbind(beta.lm$beta, beta.lm$beta.sd)
+colnames(BETA) <- c("alpha1", "alpha2", "alpha3", "ID",
+"alpha1_CI", "alpha2_CI", "alpha3_CI")
+BETA <- left_join(BETA, covars, by = "ID")
+
+ggplot(BETA) + geom_point(aes(x = latitude, y = alpha1)) +
+  geom_errorbar(aes(x = latitude,
+  ymin = alpha1 - 1.96*alpha1_CI,
+  ymax = alpha1 + 1.96*alpha1_CI)) +
+  ylab(expression(alpha[1](s))) +
+  xlab("lat (deg)") + theme_bw()
+
+cov.beta <- list(covf = "exp", nugget = FALSE)
+
+cov.nu <- list(covf = "exp",
+  nugget = ~1,
+  random.effect = FALSE) # No random mean for each nu
+
+# create the STmodel
+locations <- list(coords = c("longitude", "latitude"))
+LUR <- list(~latitude, ~latitude, ~1) # lat trend for phi1 and phi2 only
+STmodel <- createSTmodel(STdata, # data
+  LUR = LUR, # spatial covariates
+  cov.beta = cov.beta, # cov. of alphas
+  cov.nu = cov.nu, # cov. of nu
+  locations = locations) # coord. names
+
+x.init <- matrix(3, 9, 1)
+rownames(x.init) <- loglikeSTnames(STmodel, all = FALSE)
+SpatioTemporalfit1 <- estimate(STmodel, x.init)
+
+x.final <- coef(SpatioTemporalfit1, pars = "cov")$par
+
+# see Lab 4.3 for prediction
+```
+
+
 
 ## spatial studies: second, fit spatial lag and error models (for one year)
 source: https://rspatial.org/analysis/7-spregression.html
