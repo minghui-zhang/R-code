@@ -21,7 +21,7 @@ data(mesa.data.raw, package = "SpatioTemporal")
 
 mesa.data <- createSTdata(obs = mesa.data.raw$obs, 
                           covars = mesa.data.raw$X,
-                          SpatioTemporal = list(lax.conc.1500 =mesa.data.raw$lax.conc.1500))
+                          SpatioTemporal = list(lax.conc.1500 =mesa.data.raw$lax.conc.1500), n.basis = 2)
 
 # plot location and timing of observations
 plot(mesa.data, "loc", main = "occurrence of observations", xlab = "", ylab = "Location", 

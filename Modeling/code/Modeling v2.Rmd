@@ -470,6 +470,9 @@ print(SC_percent_auto)
 ## spatial studies: check residual autocorrelation in basic OLS for one year
 
 ```{r}
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
 # test basic OLS for one year only (to be compared to spatial lag and spatial error) ----------------------------
 year_oi <- 2014
 
@@ -477,6 +480,8 @@ year_oi <- 2014
 cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
 model_ols <- lm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year)
 summary(model_ols)
+
+print(c('median onset', median(cell_sf_tidy_year$onset)))
 
 cell_sf_tidy_year$residuals <- residuals(model_ols)
 
@@ -488,26 +493,83 @@ ggplot(cell_sf_tidy_year) +
 
 nb <- poly2nb(cell_sf_tidy_year)
 resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals[x]))
-plot(cell_sf_tidy_year$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Basic OLS,", year_oi))
+#plot(cell_sf_tidy_year$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Basic OLS,", year_oi))
 lw <- nb2listw(nb, zero.policy = TRUE)
 moran_basic_ols <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
 print('moran with basic ols, one year')
 print(moran_basic_ols)
 
 # plot actual plant and onset to check if the correct data is being used
-ggplot(cell_sf_tidy_year) +
-  geom_sf(aes(fill = plant)) +
-  scale_fill_viridis() +
-  ggtitle(paste("Plant date", year_oi)) +
-  theme_bw()
+# ggplot(cell_sf_tidy_year) +
+#   geom_sf(aes(fill = plant)) +
+#   scale_fill_viridis() +
+#   ggtitle(paste("Plant date", year_oi)) +
+#   theme_bw()
+# 
+# ggplot(cell_sf_tidy_year) +
+#   geom_sf(aes(fill = onset)) +
+#   scale_fill_viridis() +
+#   ggtitle(paste("Onset date", year_oi)) +
+#   theme_bw()
+
+```
+
+## spatial studies: second, fit spatial lag and error models (for one year)
+source: https://rspatial.org/analysis/7-spregression.html
+
+```{r}
+year_oi <- 2014
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+# filter a specific year
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+
+nb <- poly2nb(cell_sf_tidy_year)
+lw <- nb2listw(nb, zero.policy = TRUE)
+
+# spatial lag model ---------------------------------------------------------------------
+model_lag = lagsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_lag)
+
+cell_sf_tidy_year$residuals_lag <- residuals(model_lag)
+
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
+#plot(cell_sf_tidy_year$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_lag <- moran.mc(cell_sf_tidy_year$residuals_lag, lw, 999, zero.policy = TRUE)
+moran_lag
 
 ggplot(cell_sf_tidy_year) +
-  geom_sf(aes(fill = onset)) +
+  geom_sf(aes(fill = residuals_lag)) +
   scale_fill_viridis() +
-  ggtitle(paste("Onset date", year_oi)) +
+  ggtitle(paste("Residuals for spatial lag model,", year_oi)) +
+  theme_bw()
+
+# spatial error model ---------------------------------------------------------------------
+model_error = errorsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_error)
+
+cell_sf_tidy_year$residuals_error <- residuals(model_error)
+
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_error[x]))
+#plot(cell_sf_tidy_year$residuals_error, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial error,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_error <- moran.mc(cell_sf_tidy_year$residuals_error, lw, 999, zero.policy = TRUE)
+moran_error
+
+ggplot(cell_sf_tidy_year) +
+  geom_sf(aes(fill = residuals_error)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Residuals for spatial error model,", year_oi)) +
   theme_bw()
 
 ```
+
 
 ## temporal basis functions with SpatioTemporal
 ## NOTE, DIDN'T INCLUDE ONSET, INTENSITY, ONSET:INTENSITY AS COVARIATE HERE
@@ -557,7 +619,7 @@ STdata <- updateTrend(STdata, n.basis = 2)
 
 #plot(STdata, "acf", ID = "+4340+4285")
 
-beta.lm <- estimateBetaFields(STdata)
+beta.lm <- estimateBetaFields(STdata) # these are the alpha's in the textbook
 
 beta.lm$beta <- data.frame(beta.lm$beta)
 beta.lm$beta.sd <- data.frame(beta.lm$beta.sd)
@@ -598,63 +660,138 @@ x.final <- coef(SpatioTemporalfit1, pars = "cov")$par
 # see Lab 4.3 for prediction
 ```
 
-
-
-## spatial studies: second, fit spatial lag and error models (for one year)
-source: https://rspatial.org/analysis/7-spregression.html
+## temporal basis functions with SpatioTemporal
+## NOTE, TRY TO INCLUDE ONSET AS COVARIATE HERE (BUT NOT INTENSITY, ONSET:INTENSITY. include intensity as type field in covar? )
 
 ```{r}
-year_oi <- 2006
 
-cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+library(SpatioTemporal)
 
-# filter a specific year
-cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+clean_cell_ID <- function(cell_ID) {
+  strsplit(cell_ID, "_")[[1]][2]
+}
 
-nb <- poly2nb(cell_sf_tidy_year)
-lw <- nb2listw(nb, zero.policy = TRUE)
+# create observation data frame, for DC only. 
+# need to rename cell_ID so the same cell_ID can correspond to multiple years
 
-# spatial lag model ---------------------------------------------------------------------
-model_lag = lagsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
-                     zero.policy = TRUE)
-summary(model_lag)
+cell_tidy_DC <- cell_tidy[cell_tidy$intensity == "DC",] 
+cell_tidy_DC$cell_ID <- sapply(as.character(cell_tidy_DC$cell_ID), clean_cell_ID)
 
-cell_sf_tidy_year$residuals_lag <- residuals(model_lag)
+# filter out all cells where there isn't data for all years
+cell_tidy_DC <- cell_tidy_DC[complete.cases(cell_tidy_DC),]
+cells_list <- list()
+i <- 1
+for (year in 2004:2014) {
+  cells_in_year <- cell_tidy_DC[cell_tidy_DC$year == year,]
+  cells_list[[i]] <- cells_in_year$cell_ID
+  i <- i + 1
+}
+full_data_cells <- Reduce(intersect, cells_list)
+cell_tidy_DC <- cell_tidy_DC[cell_tidy_DC$cell_ID %in% full_data_cells, ]
 
-nb <- poly2nb(cell_sf_tidy_year)
-resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
-plot(cell_sf_tidy_year$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
-lw <- nb2listw(nb, zero.policy = TRUE)
-moran_lag <- moran.mc(cell_sf_tidy_year$residuals_lag, lw, 999, zero.policy = TRUE)
-moran_lag
+# for rownames (add Aug 1 to the years to turn into dates)
+date_rownames <- sapply(2004:2014, paste0, '-08-01')
 
-ggplot(cell_sf_tidy_year) +
-  geom_sf(aes(fill = residuals_lag)) +
-  scale_fill_viridis() +
-  ggtitle(paste("Residuals for spatial lag model,", year_oi)) +
-  theme_bw()
+cell_for_STdata <- cell_tidy_DC %>%
+                        transmute(ID = cell_ID,
+                                  obs = plant_median,
+                                  date = year) %>%
+                        spread(ID, obs) %>%
+                        dplyr::select(-c(date)) %>%
+                        as.matrix()
+rownames(cell_for_STdata) <- date_rownames
 
-# spatial error model ---------------------------------------------------------------------
-model_error = errorsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
-                     zero.policy = TRUE)
-summary(model_error)
 
-cell_sf_tidy_year$residuals_error <- residuals(model_error)
+# create covariate data frame. for now, just use lat and lon
+covars <- dplyr::select(cell_tidy_DC, cell_ID, latitude, longitude) %>%
+              unique() %>%
+              dplyr::rename(ID = cell_ID) #split(cell_sf_tidy, cell_sf_tidy$year)
 
-nb <- poly2nb(cell_sf_tidy_year)
-resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_error[x]))
-plot(cell_sf_tidy_year$residuals_error, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial error,", year_oi))
-lw <- nb2listw(nb, zero.policy = TRUE)
-moran_error <- moran.mc(cell_sf_tidy_year$residuals_error, lw, 999, zero.policy = TRUE)
-moran_error
+spatiotemporal_vars <- cell_tidy_DC %>%
+                        transmute(ID = cell_ID,
+                                  obs = onset,
+                                  date = year) %>%
+                        spread(ID, obs) %>%
+                        dplyr::select(-c(date)) %>%
+                        as.matrix()
+rownames(spatiotemporal_vars) <- date_rownames
 
-ggplot(cell_sf_tidy_year) +
-  geom_sf(aes(fill = residuals_error)) +
-  scale_fill_viridis() +
-  ggtitle(paste("Residuals for spatial error model,", year_oi)) +
-  theme_bw()
+# SpatioTemporal will be a 3D array, where the third dimension corresponds each spatiotemporal variable
+STdata <- createSTdata(cell_for_STdata, covars = covars, 
+                      SpatioTemporal = list(onset = spatiotemporal_vars), n.basis = 2)
 
+# summary of the STdata: with print(STdata), or plot(STdata, "loc")
+
+# temporal basis functions
+#STdata <- updateTrend(STdata, n.basis = 2)
+
+# to create STmodel, need to specify:
+# (1) spatial covariance model for beta and nu fields
+# (2) define which covvariates to use for each of the beta fields
+# (3) specify any spatiotemporal covariates
+
+
+# (1) spatial covariance model for beta and nu fields
+
+cov.beta <- list(covf = "exp", nugget = FALSE)
+cov.nu <- list(covf = "exp", nugget = ~1, random.effect = FALSE) # No random mean for each nu
+
+# (2) in LUR, put in variables used to model the beta), beta1, and beta3 fields
+LUR <- list(~latitude+longitude, ~latitude+longitude, ~1) 
+
+# link variable names in STdata$covars dat aframe to locations
+locations <- list(coords = c("longitude", "latitude")) # coords are used to compute distances between observation locations, can also include long.lat
+
+
+# create the STmodel
+
+STmodel <- createSTmodel(STdata, # data
+                         ST = "onset", # specify spatiotemporal variables
+                          LUR = LUR, # spatial covariates
+                          cov.beta = cov.beta, # cov. of alphas
+                          cov.nu = cov.nu, # cov. of nu
+                          locations = locations) # coord. names
+
+# can do print(STmodel) to see summary
+
+# since the regression coefficients are estimated by profile likelihood, only the covariance parameters need starting values specified. once these are optimized, the maximum-likelihood estimate of the regression coefficients can be inferred using generalized least squares
+# to see the paramters we're specifying the starting points for, use loglikeSTnames()
+model.dim <- loglikeSTdim(STmodel)
+x.init <- matrix(3,9,1) #cbind(matrix(3,9,1), matrix(2, 9, 1)) # can have multiple starting points for optimization, see the SpatioTemporal tutorial
+#rownames(x.init) <- loglikeSTnames(STmodel, all = FALSE)
+SpatioTemporalfit1 <- estimate(STmodel, x.init)
+
+# can do print(SpatioTemporalfit1) to see summary, including converged parameter values from two starint points, and names(SpatialTemporalfit1) to see output included
+# output:
+# res.all is a list with the optimization results for each starting point, and res.best contains the best optimization results
+# within res.all or res.best, 
+# par = the estimated log-covariance parameters
+# value = value of the log-likelihood
+# par.cov = estimates, estimated standard errors and t-statistics for the log-covariance parameters
+# par.all = same summary as par.cov, but for all teh parameters of the model. the regression coefficients are computed using generalized least squares
+
+print(SpatioTemporalfit1$res.best$par.all)
+# see Lab 4.3 or SpatioTemporal tutorial for prediction
+
+# cross validation
+Ind.cv <- createCV(STmodel, groups=10, min.dist=.1)
+x.init <- coef(SpatioTemporalfit1, pars="cov")[,c("par","init")]
+est.cv <- estimateCV(STmodel, x.init, Ind.cv)
+
+print(coef(est.cv))
+
+pred.cv <- predictCV(STmodel, est.cv, LTA = TRUE)
+
+# to get predictions at observed locations, pred.cv$pred.obs
+
+# analyze residuals
+qqnorm(pred.cv, line = 2)
+scatterPlot(pred.cv, STdata = STmodel, covar = "latitude", type = "res")
+scatterPlot(pred.cv, STdata = STmodel, covar = "longitude", type = "res")
 ```
+
+
+
 
 
 ## spatial studies: spatially weighted regression (for one year)
@@ -664,15 +801,21 @@ http://www.spatialanalysisonline.com/An%20Introduction%20to%20Spatial%20Data%20A
 ```{r}
 library(spgwr) # spatially weighted regression
 
-year_oi <- 2014
+year_oi <- 2013
+
+# need to read in again because we re-save it at the end
+cell_sf <- st_read(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
+
+cell_sf_tidy <- cell_sf %>% tidy_by_intensity_plant("SC_plant", "DC_plant") %>%
+            tidy_by_intensity_delay("SC_delay", "DC_delay") %>%
+            dplyr::select(-c(SC_harvest, DC_harvest))
+cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
 
 # filter for a specific year, then turn sf object into SPDF
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
 cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
 cell_spdf_tidy_year <- as(cell_sf_tidy_year, 'Spatial')
 
-# for app.R
-saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
 
 #run GWR
 #calculate kernel bandwidth (takes a long time)
@@ -685,45 +828,123 @@ gwr.model <- gwr(plant ~ onset + intensity + lat + onset:intensity,
 #print the results of the model
 gwr.model
 
-# third, map the results 
 
+# calculate median onset over the years for each cell, then the deviation from the median in that year
+cell_sf_tidy <- cell_sf_tidy %>%
+    group_by(label) %>%
+    mutate(onset_multiYearMedian = median(onset)) %>% # over all time, but for specific cell
+    mutate(onset_deviation1 = onset - onset_multiYearMedian) %>%
+    ungroup() %>%
+    mutate(onset_overallMedian = median(onset)) %>% # over all space and time
+    mutate(onset_deviation2 = onset - onset_overallMedian)
+
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+
+# third, map the results 
 results <-as.data.frame(gwr.model$SDF)
 gwr.map <- cbind(cell_spdf_tidy_year, as.matrix(results))
+gwr.map$onset_deviation1 <- cell_sf_tidy_year$onset_deviation1
+gwr.map$onset_deviation2 <- cell_sf_tidy_year$onset_deviation2
+gwr.df <- as.data.frame(gwr.map)
+gwr.df <- gwr.df %>% 
+    mutate(onsetCoef_range1 = onset.1 - 1.96*onset_se) %>%
+    mutate(onsetCoef_range2 = onset.1 + 1.96*onset_se) %>%
+    mutate(onset_signif = !(onsetCoef_range1 < 0 & onsetCoef_range2 > 0))
 
 # create tmap objects
-map_localR2 <- tm_shape(gwr.map) + 
-  tm_fill("localR2", n = 5, style = "quantile") +
-  tm_layout(title = paste("Local R2,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# map_localR2 <- tm_shape(gwr.map) + 
+#   tm_fill("localR2", n = 5, style = "quantile") +
+#   tm_layout(title = paste("Local R2,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
 map_onset <- tm_shape(gwr.map) + 
   tm_fill("onset.1", n = 5, style = "quantile") +
   tm_layout(title = paste("Onset Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-map_intensity <- tm_shape(gwr.map) + 
-  tm_fill("intensitySC", n = 5, style = "quantile") +
-  tm_layout(title = paste("IntensitySC Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
-
-map_latitude <- tm_shape(gwr.map) + 
-  tm_fill("lat.1", n = 5, style = "quantile") +
-  tm_layout(title = paste("Latitude Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# map_intensity <- tm_shape(gwr.map) + 
+#   tm_fill("intensitySC", n = 5, style = "quantile") +
+#   tm_layout(title = paste("IntensitySC Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# 
+# map_latitude <- tm_shape(gwr.map) + 
+#   tm_fill("lat.1", n = 5, style = "quantile") +
+#   tm_layout(title = paste("Latitude Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
 map_onset_se <- tm_shape(gwr.map) + 
   tm_fill("onset_se", n = 5, style = "quantile") +
   tm_layout(title = paste("Onset Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-map_intensity_se <- tm_shape(gwr.map) + 
-  tm_fill("intensitySC_se", n = 5, style = "quantile") +
-  tm_layout(title = paste("IntensitySC Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# map_intensity_se <- tm_shape(gwr.map) + 
+#   tm_fill("intensitySC_se", n = 5, style = "quantile") +
+#   tm_layout(title = paste("IntensitySC Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# 
+# map_latitude_se <- tm_shape(gwr.map) + 
+#   tm_fill("lat_se", n = 5, style = "quantile") +
+#   tm_layout(title = paste("Latitude Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# 
+# map_localR2
 
-map_latitude_se <- tm_shape(gwr.map) + 
-  tm_fill("lat_se", n = 5, style = "quantile") +
-  tm_layout(title = paste("Latitude Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# map_intensity
+# map_latitude
 
-map_localR2
-map_onset
-map_intensity
-map_latitude
-map_onset_se
-map_intensity_se
-map_latitude_se
+# map_intensity_se
+# map_latitude_se
+
+# get only rows with statistically significant onset coefficients
+gwr.df.signif <- gwr.df %>% subset(onset_signif == TRUE)
+
+onset_deviation1_plot <- ggplot(gwr.df, aes(x = onset_deviation1, y = onset.1, col = onset_signif)) +
+  geom_point(alpha = 0.3) +
+  ggtitle(paste("Stat signif cells in", year_oi)) +
+  xlab("onset deviation from within-cell multiyear median") +
+  ylab("onset coefficient") +
+  geom_smooth(method = "lm") +
+  geom_vline(xintercept = 0) +
+  coord_cartesian(ylim = c(-3, 3), xlim = c(-30, 40)) +
+  theme_bw()
+
+onset_deviation2_plot <- ggplot(gwr.df, aes(x = onset_deviation2, y = onset.1, col = onset_signif)) +
+  geom_point(alpha = 0.3) +
+  ggtitle(paste("Stat signif cells in", year_oi)) +
+  xlab("onset deviation from multiyear, multicell median") +
+  ylab("onset coefficient") +
+  geom_smooth(method = "lm") +
+  geom_vline(xintercept = 0) +
+  coord_cartesian(ylim = c(-3, 3), xlim = c(-50, 40)) +
+  theme_bw()
+
+# print plots
+#print(map_onset)
+#print(map_onset_se)
+#print(onset_deviation2_plot)
+
+percent_pos_onset <- sum(gwr.df.signif$onset_deviation2 > 0)/length(gwr.df.signif$onset_deviation2)
+percent_pos_coef <- sum(gwr.df.signif$onset.1 > 0)/length(gwr.df.signif$onset_deviation2)
+
+print(c('year', year_oi))
+print(c('percent positive onset deviation', percent_pos_onset))
+print(c('percent positive onset coef', percent_pos_coef))
+```
+
+## export
+
+```{r}
+# for app.R
+#saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
+
+# from GWR section
+late_early_onset_years <- data.frame(
+  year = 2004:2014,
+  percent_positive_onset = c(14, 67, 18, 2, 97, 69, 25, 100, 43, 35, 88),
+  percent_positive_coef = c(42, 34, 56, 40, 97, 60, 53, 93, 97, 89, 77)
+)
+
+ggplot(late_early_onset_years, aes(x = percent_positive_onset, y = percent_positive_coef, col = year, label = year)) +
+  geom_point() + 
+  geom_vline(xintercept = 50) +
+  geom_text(aes(label=year),hjust=0, vjust=0) +
+  coord_cartesian(ylim = c(0, 110), xlim = c(0, 110)) +
+  ggtitle("For statistically significant onset coefs from GWR") +
+  xlab("Percent cells with positive onset deviation") +
+  ylab("Percent cells with positive onset coefficient") +
+  theme_bw()
+
 ```
