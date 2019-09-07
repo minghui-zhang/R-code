@@ -43,23 +43,15 @@ grid_1deg <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/grid_1deg', layer = 'gri
 munis <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/munis', layer = 'munis_SHP')
 crs(munis) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
   
+MT_outline <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/MatoGrossoOutline', layer = 'MatoGrossoOutline')
+crs(MT_outline) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
 #cell_shp <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
 
 
 ```
 
-## read and clean spatial data
 
-```{r}
-
-cell_sf <- st_read(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
-
-cell_sf_tidy <- cell_sf %>% tidy_by_intensity_plant("SC_plant", "DC_plant") %>%
-            tidy_by_intensity_delay("SC_delay", "DC_delay") %>%
-            dplyr::select(-c(SC_harvest, DC_harvest))
-cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
-
-```
 
 ## spatial join muni to CARpolys
 
@@ -100,6 +92,26 @@ percentile95_muni <- percentile95_muni_raw %>% filter(year > 0)
 
 ```
 
+## read and clean spatial data
+
+```{r}
+
+cell_sf <- st_read(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
+
+# add cell_ID
+clean_cell_ID <- function(cell_ID) {
+  strsplit(cell_ID, "_")[[1]][2]
+}
+cell_sf$cell_ID <- median_cell$cell_ID
+cell_sf$cell_ID <- sapply(as.character(cell_sf$cell_ID), clean_cell_ID)
+
+
+cell_sf_tidy <- cell_sf %>% tidy_by_intensity_plant("SC_plant", "DC_plant") %>%
+            tidy_by_intensity_delay("SC_delay", "DC_delay") %>%
+            dplyr::select(-c(SC_harvest, DC_harvest))
+cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
+
+```
 
 ## tidy the data and categorize the numeric variables
 
@@ -727,7 +739,7 @@ STdata <- createSTdata(cell_for_STdata, covars = covars,
 
 # to create STmodel, need to specify:
 # (1) spatial covariance model for beta and nu fields
-# (2) define which covvariates to use for each of the beta fields
+# (2) define which covariates to use for each of the beta fields
 # (3) specify any spatiotemporal covariates
 
 
@@ -774,7 +786,7 @@ print(SpatioTemporalfit1$res.best$par.all)
 # see Lab 4.3 or SpatioTemporal tutorial for prediction
 
 # cross validation
-Ind.cv <- createCV(STmodel, groups=10, min.dist=.1)
+Ind.cv <- createCV(STmodel, groups=5, min.dist=.1)
 x.init <- coef(SpatioTemporalfit1, pars="cov")[,c("par","init")]
 est.cv <- estimateCV(STmodel, x.init, Ind.cv)
 
@@ -801,7 +813,7 @@ http://www.spatialanalysisonline.com/An%20Introduction%20to%20Spatial%20Data%20A
 ```{r}
 library(spgwr) # spatially weighted regression
 
-year_oi <- 2013
+year_oi <- 2014
 
 # need to read in again because we re-save it at the end
 cell_sf <- st_read(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
@@ -843,22 +855,38 @@ cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
 # third, map the results 
 results <-as.data.frame(gwr.model$SDF)
 gwr.map <- cbind(cell_spdf_tidy_year, as.matrix(results))
-gwr.map$onset_deviation1 <- cell_sf_tidy_year$onset_deviation1
-gwr.map$onset_deviation2 <- cell_sf_tidy_year$onset_deviation2
+gwr.map$onset_deviation1 <- cell_sf_tidy_year$onset_deviation1 # deviation from multiyear median onset compared to specific cell
+gwr.map$onset_deviation2 <- cell_sf_tidy_year$onset_deviation2 # deviation from multiyear median onset over all space
+
+# as spdf
+gwr.map$onsetCoef_range1 <- gwr.map$onset.1 - 1.96*gwr.map$onset_se
+gwr.map$onsetCoef_range2 <- gwr.map$onset.1 + 1.96*gwr.map$onset_se
+gwr.map$onset_signif <- !(gwr.map$onsetCoef_range1 < 0 & gwr.map$onsetCoef_range2 > 0)
+# get only the cells with statistically significant onset coefficients
+gwr.map.signif <- gwr.map[gwr.map$onset_signif == TRUE,]
+
+# as data frame
 gwr.df <- as.data.frame(gwr.map)
 gwr.df <- gwr.df %>% 
     mutate(onsetCoef_range1 = onset.1 - 1.96*onset_se) %>%
     mutate(onsetCoef_range2 = onset.1 + 1.96*onset_se) %>%
     mutate(onset_signif = !(onsetCoef_range1 < 0 & onsetCoef_range2 > 0))
+# get only rows with statistically significant onset coefficients
+gwr.df.signif <- gwr.df %>% subset(onset_signif == TRUE)
+
 
 # create tmap objects
 # map_localR2 <- tm_shape(gwr.map) + 
 #   tm_fill("localR2", n = 5, style = "quantile") +
 #   tm_layout(title = paste("Local R2,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-map_onset <- tm_shape(gwr.map) + 
-  tm_fill("onset.1", n = 5, style = "quantile") +
-  tm_layout(title = paste("Onset Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# put in only statistically significant coefficients
+map_onset <-   tm_shape(MT_outline) +
+  tm_polygons(alpha = 0) +
+  tm_shape(gwr.map.signif) + 
+  tm_fill("onset.1", breaks = seq(-4, 4)) +
+  tm_layout(title = paste("Onset Coefficient (stat signif),", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+
 
 # map_intensity <- tm_shape(gwr.map) + 
 #   tm_fill("intensitySC", n = 5, style = "quantile") +
@@ -868,9 +896,9 @@ map_onset <- tm_shape(gwr.map) +
 #   tm_fill("lat.1", n = 5, style = "quantile") +
 #   tm_layout(title = paste("Latitude Coefficient,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
 
-map_onset_se <- tm_shape(gwr.map) + 
-  tm_fill("onset_se", n = 5, style = "quantile") +
-  tm_layout(title = paste("Onset Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1)
+# map_onset_se <- tm_shape(gwr.map) + 
+#   tm_fill("onset_se", n = 5, style = "quantile") +
+#   tm_layout(title = paste("Onset Coef Std Error,", year_oi), legend.text.size = 0.5, legend.title.size = 1) 
 
 # map_intensity_se <- tm_shape(gwr.map) + 
 #   tm_fill("intensitySC_se", n = 5, style = "quantile") +
@@ -887,9 +915,6 @@ map_onset_se <- tm_shape(gwr.map) +
 
 # map_intensity_se
 # map_latitude_se
-
-# get only rows with statistically significant onset coefficients
-gwr.df.signif <- gwr.df %>% subset(onset_signif == TRUE)
 
 onset_deviation1_plot <- ggplot(gwr.df, aes(x = onset_deviation1, y = onset.1, col = onset_signif)) +
   geom_point(alpha = 0.3) +
@@ -922,13 +947,17 @@ percent_pos_coef <- sum(gwr.df.signif$onset.1 > 0)/length(gwr.df.signif$onset_de
 print(c('year', year_oi))
 print(c('percent positive onset deviation', percent_pos_onset))
 print(c('percent positive onset coef', percent_pos_coef))
+
+print(map_onset)
 ```
 
 ## export
 
 ```{r}
 # for app.R
-#saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na %>%
+                              mutate(year_factor = as.factor(year))
+saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
 
 # from GWR section
 late_early_onset_years <- data.frame(

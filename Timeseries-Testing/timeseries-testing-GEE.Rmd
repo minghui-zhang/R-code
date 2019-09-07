@@ -174,15 +174,15 @@ R_GEE_algorithm <- function(ts, window_EVI_1, window_EVI_2, window_dEVI, numMiss
   results <- c(maxEVIday_fitted, quarterPd)
   names(results) <- c('maxEVIday_fitted', 'quarterPd')
   
-  plot(ts_fitting_R$t, EVI_fitting, main = "GEE", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
-  lines(ts_fitting_R$t, EVI_fitting, col = "black")
-  lines(ts_fitting_R$t, fitted(model_GEE_harmonic), col = "red")
-  abline(v = maxEVIday_fitted, col = "blue")
-  abline(v = maxEVIday_fitted - quarterPd, col = "darkgreen")
-  legend("topright", 
-    legend = c("EVI for fitting", "Fitted EVI", "Estimated date of max or min EVI", "Estimated greenup date"), 
-    col = c("black", "red", "blue", "darkgreen"),
-    pch = 15)
+  # plot(ts_fitting_R$t, EVI_fitting, main = "GEE", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
+  # lines(ts_fitting_R$t, EVI_fitting, col = "black")
+  # lines(ts_fitting_R$t, fitted(model_GEE_harmonic), col = "red")
+  # abline(v = maxEVIday_fitted, col = "blue")
+  # abline(v = maxEVIday_fitted - quarterPd, col = "darkgreen")
+  # legend("topright", 
+  #   legend = c("EVI for fitting", "Fitted EVI", "Estimated date of max or min EVI", "Estimated greenup date"), 
+  #   col = c("black", "red", "blue", "darkgreen"),
+  #   pch = 15)
   
   return(results)
 }
@@ -270,26 +270,37 @@ test_smoothing_GEE <- function(ts, numRuns, elimPoints, window_EVI_1_vector, win
   
   plot_df <- plot_df %>% group_by(smoothing_name)
   
+  # PEAK PLOT --------------------------------------------------------------------------------------------------------------------------
   peak_summary_plot <- ggplot(plot_df) +
-    geom_line(data = plot_df, aes(eliminated_points_toPlot, peak_mean, color = smoothing_name)) +
+    geom_line(data = plot_df, aes(eliminated_points_toPlot, peak_mean, color = smoothing_name), size = 2) +
     geom_point(data = plot_df, aes(eliminated_points_toPlot, peak_mean, color = smoothing_name)) +
-    geom_errorbar(data = plot_df,
-                  aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name),
-                  width = 0.4) +
-    scale_color_manual(values = c('blue', 'darkgreen', 'purple', 'orange', 'red')) +
+    #geom_errorbar(data = plot_df,
+    #              aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name), width = 0.4) +
+    geom_ribbon(aes(x = eliminated_points_toPlot, ymin=peak_mean - peak_sd, 
+                    ymax=peak_mean + peak_sd, color = smoothing_name), alpha=0.2) +
+    scale_x_continuous(breaks=c(0,2,4,6,8,10)) +
+    ylim(110, 145) +
+    scale_color_manual(values = c('black', 'darkgreen', 'orange', 'orange', 'red')) +
     theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
     ggtitle('Peak, GEE') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
     
+  # QUARTER PERIOD PLOT ----------------------------------------------------------------------------------------------------------------
   quarterPd_summary_plot <- ggplot(plot_df) +
-    geom_line(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, color = smoothing_name)) +
+    geom_line(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, color = smoothing_name), size = 2) +
     geom_point(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, color = smoothing_name)) +
-    geom_errorbar(data = plot_df,
-                  aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name),
-                  width = 0.4) +
-    scale_color_manual(values = c('blue', 'darkgreen', 'purple', 'orange', 'red')) +
+    #geom_errorbar(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name), width = 0.4) +
+    geom_ribbon(aes(x = eliminated_points_toPlot, ymin=quarterPd_mean - quarterPd_sd, 
+                    ymax=quarterPd_mean + quarterPd_sd, color = smoothing_name), alpha=0.2) +
+    scale_x_continuous(breaks=c(0,2,4,6,8,10)) +
+    ylim(25, 55) +
+    scale_color_manual(values = c('black', 'darkgreen', 'orange', 'orange', 'red')) +
     theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
     ggtitle('Quarter period, GEE') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')
@@ -312,6 +323,9 @@ print(R_GEE_algorithm(ts, 20, 20, 40, 0))
 
 ```{r}
 
-test_smoothing_GEE(ts, 50, c(0, 1 ,2, 3, 4, 5, 6, 7, 8, 9, 10), c(20, 0, 0, 20, 0), c(20, 20, 0, 20, 0), c(40, 40, 40, 0, 0), c('double smoothed EVI, smoothed dEVI', 'single smoothed EVI, smoothed dEVI', 'unsmoothed EVI, smoothed dEVI', 'double smoothed EVI, unsmoothed dEVI', 'unsmoothed EVI, unsmoothed dEVI'))
+set.seed(2)
+#test_smoothing_GEE(ts, 50, c(0, 1 ,2, 3, 4, 5, 6, 7, 8, 9, 10), c(20, 0, 0, 20, 0), c(20, 20, 0, 20, 0), c(40, 40, 40, 0, 0), c('double smoothed EVI, smoothed dEVI', 'single smoothed EVI, smoothed dEVI', 'unsmoothed EVI, smoothed dEVI', 'double smoothed EVI, unsmoothed dEVI', 'unsmoothed EVI, unsmoothed dEVI'))
 
+# fewer smoothing combinations
+test_smoothing_GEE(ts, 50, c(0, 1 ,2, 3, 4, 5, 6, 7, 8, 9, 10), c(20, 20, 0), c(20, 20, 0), c(40, 0, 0), c('smoothed EVI, smoothed dEVI/dt', 'smoothed EVI, unsmoothed dEVI/dt', 'unsmoothed EVI, unsmoothed dEVI/dt'))
 ```

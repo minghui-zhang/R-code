@@ -189,12 +189,12 @@ harmonic_nls_simple_algorithm <- function(ts, window_EVI_1, window_EVI_2, numMis
   results <- c(date_max, quarter_period_comparable)
   names(results) <- c('midSeason', 'quarterPd_comparable')
   
-  plot(ts_R$t, EVI_smoothed2, main = "1st order harmonic nls", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
-  lines(ts_R$t, EVI_smoothed2, col = "black")
-  lines(ts_R$t, fitted(model_nls1), col = "red")
-  abline(v = date_min, col = "blue")
-  abline(v = date_max - quarter_period_comparable, col = "darkgreen")
-  abline(v = date_max, col = "blue")
+  # plot(ts_R$t, EVI_smoothed2, main = "1st order harmonic nls", xlab = "Days after August 1", ylab = "EVI", xlim = c(0, 350))
+  # lines(ts_R$t, EVI_smoothed2, col = "black")
+  # lines(ts_R$t, fitted(model_nls1), col = "red")
+  # abline(v = date_min, col = "blue")
+  # abline(v = date_max - quarter_period_comparable, col = "darkgreen")
+  # abline(v = date_max, col = "blue")
 
   return(results)
 }
@@ -277,26 +277,36 @@ test_smoothing_harmonic_nls_simple <- function(ts, numRuns, elimPoints, window_E
   
   plot_df <- plot_df %>% group_by(smoothing_name)
   
+  # PEAK PLOT --------------------------------------------------------------------------------------------------------------------------
   peak_summary_plot <- ggplot(plot_df) +
-    geom_line(data = plot_df, aes(eliminated_points_toPlot, peak_mean, color = smoothing_name)) +
+    geom_line(data = plot_df, aes(eliminated_points_toPlot, peak_mean, color = smoothing_name), size = 2) +
     geom_point(data = plot_df, aes(eliminated_points_toPlot, peak_mean, color = smoothing_name)) +
-    geom_errorbar(data = plot_df,
-                  aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name),
-                  width = 0.4) +
-    scale_color_manual(values = c('blue', 'darkgreen', 'red')) +
+    #geom_errorbar(data = plot_df, aes(eliminated_points_toPlot, peak_mean, ymin = peak_mean - peak_sd, ymax = peak_mean + peak_sd, color = smoothing_name), width = 0.4) +
+    geom_ribbon(aes(x = eliminated_points_toPlot, ymin=peak_mean - peak_sd, 
+                    ymax=peak_mean + peak_sd, color = smoothing_name), alpha=0.2) +
+    scale_x_continuous(breaks=c(0,2,4,6,8,10)) +
+    ylim(110, 145) +
+    scale_color_manual(values = c('black', 'orange')) +
     theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
     ggtitle('Peak, harmonic nls') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
     
+  # QUARTER PERIOD PLOT ----------------------------------------------------------------------------------------------------------------
   quarterPd_summary_plot <- ggplot(plot_df) +
-    geom_line(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, color = smoothing_name)) +
+    geom_line(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, color = smoothing_name), size = 2) +
     geom_point(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, color = smoothing_name)) +
-    geom_errorbar(data = plot_df,
-                  aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name),
-                  width = 0.4) +
-    scale_color_manual(values = c('blue', 'darkgreen', 'red')) +
+    #geom_errorbar(data = plot_df, aes(eliminated_points_toPlot, quarterPd_mean, ymin = quarterPd_mean - quarterPd_sd, ymax = quarterPd_mean + quarterPd_sd, color = smoothing_name), width = 0.4) +
+    geom_ribbon(aes(x = eliminated_points_toPlot, ymin=quarterPd_mean - quarterPd_sd, 
+                    ymax=quarterPd_mean + quarterPd_sd, color = smoothing_name), alpha=0.2) +
+    scale_x_continuous(breaks=c(0,2,4,6,8,10)) +
+    ylim(25, 55) +
+    scale_color_manual(values = c('black', 'orange')) +
     theme_bw() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +
     ggtitle('Quarter period, harmonic nls') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')
@@ -317,5 +327,10 @@ print(harmonic_nls_simple_algorithm(ts, 0, 0, 0, 10, 120, 110, 200, '2016-09-01'
 ## Harmonic nls computation
 
 ```{r}
-test_smoothing_harmonic_nls_simple(ts, 50, seq(0, 10), c(0, 0, 20), c(0, 20, 20), c('double smoothed EVI', 'single smoothed EVI', 'unsmoothed EVI'),20, 140, 120, 190, '2016-09-01', '2017-02-01')
+set.seed(2)
+
+#test_smoothing_harmonic_nls_simple(ts, 50, seq(0, 10), c(0, 0, 20), c(0, 20, 20), c('double smoothed EVI', 'single smoothed EVI', 'unsmoothed EVI'),20, 140, 120, 190, '2016-09-01', '2017-02-01')
+
+# fewer smoothing combinations
+test_smoothing_harmonic_nls_simple(ts, 50, seq(0, 10), c(20,  0), c(20, 0), c('smoothed EVI', 'unsmoothed EVI'),20, 140, 120, 190, '2016-09-01', '2017-02-01')
 ```
