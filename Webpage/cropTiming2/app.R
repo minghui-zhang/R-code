@@ -9,7 +9,7 @@ library(ggplot2)
 # TUTORIAL: https://rstudio.github.io/leaflet/shiny.html
 
 df <- readRDS("./cell_spdf.rds")
-MT_outline <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/MatoGrossoOutline', layer = 'MatoGrossoOutline')
+MT_outline <- readOGR(dsn = './MatoGrossoOutline', layer = 'MatoGrossoOutline')
 crs(MT_outline) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 
 
