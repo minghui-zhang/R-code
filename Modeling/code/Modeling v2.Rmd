@@ -3,6 +3,12 @@ title: "Exploration"
 output: html_document
 ---
 
+Has code for stepwise model selection, without spatial or temporal autocorrelation
+Spatial lag and spatial error models for one year
+Calculating temporal and spatial autocorrelation of residuals from regular OLS
+Geographically weighted regression
+SpatioTemporal package
+
 ## read data
 
 ```{r}
