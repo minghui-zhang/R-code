@@ -1,0 +1,232 @@
+---
+title: "Spatial Lag and Spatial Error"
+output: html_document
+---
+
+1. Spatial lag and spatial error models for one year
+2. Model evaluation (residual plots, residual autocorrelation)
+
+
+## read data
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(broom)
+library(dplyr)
+library(rgdal)
+library(rgeos)
+library(raster)
+library(sf)
+library(sp)
+library(tmap)
+library(viridis)
+library(spdep)
+library(spatialreg)
+library(splm)
+library(lmtest)
+
+#E:/R-code/Modeling/code/FCN_clean_csvs.R
+#~/Documents/R-code
+source('E:/R-code/Modeling/code/FCN_clean_csvs.R')
+
+MT_outline <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/MatoGrossoOutline', layer = 'MatoGrossoOutline')
+crs(MT_outline) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+median_cell_raw <- read.csv('E:/R-code/Modeling/data/median_onset_cell_v2.csv')
+
+grid_1deg <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/grid_1deg', layer = 'grid_1deg')
+munis <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/munis', layer = 'munis_SHP')
+crs(munis) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+  
+MT_outline <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/MatoGrossoOutline', layer = 'MatoGrossoOutline')
+crs(MT_outline) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+cell_sf <- st_read(dsn = 'E:/R-code/Modeling/data/shp/median_onset_cell', layer = 'median_onset_cell_SHP')
+
+min_soy_area <- 2 #km2. min area of total or SC/DC soy in cell, muni or property to be considered in model
+
+```
+
+
+## functions
+
+```{r}
+# test the models
+test_plots <- function(model, model_name) {
+  
+  plot(model$residuals, main = paste("residual vs index", model_name))
+
+  plot(model$fitted.values, model$residuals, main = paste("fitted values vs residuals", model_name))
+  
+  # normal probability plot
+  qqnorm(model$residuals, pch = 1, frame = FALSE, main = model_name)
+  qqline(model$residuals, col = "steelblue", lwd = 2)
+}
+
+# add cell_ID
+clean_cell_ID <- function(cell_ID) {
+  strsplit(cell_ID, "_")[[1]][2]
+}
+
+# plot data
+plot_cell_onset <- function(year, cell_data) {
+  cell_year <- cell_data[cell_data$year == year, ]
+  
+  ggplot(cell_year) +
+   geom_sf(aes(fill = onset)) +
+   scale_fill_viridis() +
+   ggtitle(paste("Onset for spatial lag or error", year)) +
+   geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
+   theme_bw()
+}
+
+plot_cell_residuals <- function(year, cell_data, intensity) {
+  cell_year <- cell_data[cell_data$year == year, ]
+  
+  ggplot(cell_year) +
+   geom_sf(aes(fill = residuals)) +
+   scale_fill_viridis() +
+   ggtitle(paste(intensity, "residuals for spatial lag or error", year)) +
+   geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
+   theme_bw()
+}
+
+plot_cell_plant <- function(year, cell_data, intensity) {
+  cell_year <- cell_data[cell_data$year == year, ]
+  
+  ggplot(cell_year) +
+   geom_sf(aes(fill = plant)) +
+   scale_fill_viridis() +
+   ggtitle(paste(intensity, "plant for spatial lag or error", year)) +
+   geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
+   theme_bw()
+}
+
+plot_cell_tempAuto <- function(year, cell_data, intensity) {
+  cell_year <- cell_data[cell_data$year == year, ]
+  
+  ggplot(cell_year) +
+   geom_sf(aes(fill = dwi.autocorr.p.value)) +
+   scale_fill_viridis() +
+   ggtitle(paste(intensity, "signif temporal autocorrelation for basic OLS", year)) +
+   geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
+   theme_bw()
+}
+
+```
+
+## read and clean spatial data
+
+```{r}
+
+# CSV DATA -----------------------------------------------------------------------------------------------------------------
+# median cell
+median_cell <- median_cell_raw %>% delete_cols_median_cell() %>%
+                                    rename_cols_median_cell()
+
+# SF DATA ------------------------------------------------------------------------------------------------
+
+cell_sf$cell_ID <- median_cell$cell_ID
+cell_sf$cell_ID <- sapply(as.character(cell_sf$cell_ID), clean_cell_ID)
+
+
+cell_sf_tidy <- cell_sf %>% tidy_by_intensity_plant("SC_plant", "DC_plant") %>%
+            #tidy_by_intensity_delay("SC_delay", "DC_delay") %>%
+            dplyr::select(-c(SC_harvest, DC_harvest))
+cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
+
+```
+
+## spatial lag, for one year
+source: https://rspatial.org/analysis/7-spregression.html
+
+```{r}
+year_oi <- 2008
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+# filter a specific year
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+
+nb <- poly2nb(cell_sf_tidy_year)
+lw <- nb2listw(nb, zero.policy = TRUE)
+
+# spatial lag model ---------------------------------------------------------------------
+model_lag = lagsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_lag)
+
+# model evaluation: plant and onset maps (only those used in the actual modeling) --------------------------------------
+print(plot_cell_onset(year_oi, cell_sf_tidy_year))
+print(plot_cell_plant(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+# model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
+test_plots(model_lag, "model_lag")
+
+# model evaluation: residual map --------------------------------------------------------------------------------------
+cell_sf_tidy_year$residuals <- residuals(model_lag)
+
+print(plot_cell_residuals(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+# model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
+#plot(cell_sf_tidy_year$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_lag <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
+print('moran for spatial lag')
+moran_lag
+
+```
+
+## spatial error, for one year
+
+```{r}
+year_oi <- 2010
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+# filter a specific year
+cell_sf_tidy_year <- cell_sf_tidy %>% filter(year == year_oi)
+
+nb <- poly2nb(cell_sf_tidy_year)
+lw <- nb2listw(nb, zero.policy = TRUE)
+
+# spatial error model ---------------------------------------------------------------------
+model_error = errorsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_error)
+
+# model evaluation: plant and onset maps (only those used in the actual modeling) --------------------------------------
+print(plot_cell_onset(year_oi, cell_sf_tidy_year))
+print(plot_cell_plant(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+# model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
+test_plots(model_error, "model_error")
+
+# model evaluation: residual map --------------------------------------------------------------------------------------
+cell_sf_tidy_year$residuals <- residuals(model_error)
+
+print(plot_cell_residuals(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+# model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_error[x]))
+#plot(cell_sf_tidy_year$residuals_error, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial error,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_error <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
+print('moran for spatial error')
+moran_error
+
+```
+
+## export
+
+```{r}
+# for app.R
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na %>%
+                              mutate(year_factor = as.factor(year))
+saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
+
+```

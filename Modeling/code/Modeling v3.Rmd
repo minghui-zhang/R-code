@@ -216,11 +216,13 @@ cell_tidy_DC_pdfo <- cell_tidy_DC_pdf[order(cell_tidy_DC_pdf$year) , ] # pdata.f
 # spatial structure is specified by combining logical arguments lag (if TRUE, adds spatial autoregressive term in the dependent variable) and spatial.error (takes three values: "b", "kkp", or "none" for no spatial error correlation")
 #cell_DC_FEDurbin = spml(plant ~ onset + lat + year, data=cell_tidy_DC_pdfo, listw=lw, model="within", effect="twoways", lag=TRUE, spatial.error="none")
 
-cell_DC_model1 = spml(plant ~ onset + lat + year, data=cell_tidy_DC_pdfo, listw=lw, 
+cell_DC_model1 = spml(plant ~ onset + lat + year  +1, data=cell_tidy_DC_pdfo, listw=lw, 
                     model = "random", lag = TRUE, spatial.error = "b")
 
 # this doesn't work, object lengths differ
-#cell_DC_model2 = spml(plant ~ onset, data=cell_tidy_DC_pdfo, listw=lw, effect = "individual", model="within", spatial.error="none", lag = T)
+
+cell_DC_model2 = spml(plant ~ onset, data=cell_tidy_DC_pdfo, listw=lw, effect = "individual", model="within", spatial.error="none", lag = T)
+
 
 cell_DC_model3 = spml(plant ~ onset + lat + year, data=cell_tidy_DC_pdfo, listw=lw, 
                       model="pooling", effect = "twoways", lag=TRUE, spatial.error="kkp")

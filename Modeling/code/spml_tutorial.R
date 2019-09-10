@@ -14,7 +14,7 @@ summary(sararremod)
 library(splm)
 library(plm)
 
-df <- data.frame(y = c(10,20,30,40,15,17,25,37), x = c(10,5,20,10,12,7,18,11))
+df <- data.frame(y = c(1,2,3,4,1,1.7,2.5,3.7), x = c(10,5,20,10,12,7,18,11))
 df$time <- rep(c(1,2), each = 4)
 df$ind <- rep(1:4, 2)
 df <- df[,c("ind","time", "y", "x")]
