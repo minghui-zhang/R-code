@@ -156,6 +156,8 @@ lw <- nb2listw(nb, zero.policy = TRUE)
 model_lag = lagsarlm(plant ~ onset + intensity + lat + onset:intensity, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
                      zero.policy = TRUE)
 summary(model_lag)
+cell_sf_tidy_year$residuals <- residuals(model_lag)
+cell_sf_tidy_year$fitted.values <- fitted.values(model_lag)
 
 # model evaluation: plant and onset maps (only those used in the actual modeling) --------------------------------------
 print(plot_cell_onset(year_oi, cell_sf_tidy_year))
@@ -163,11 +165,24 @@ print(plot_cell_plant(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == 
 
 # model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
 test_plots(model_lag, "model_lag")
+plot(cell_sf_tidy_year$plant, cell_sf_tidy_year$fitted.values, main = paste(year_oi, "spatial lag fitted value vs actual value of plant"))
 
 # model evaluation: residual map --------------------------------------------------------------------------------------
-cell_sf_tidy_year$residuals <- residuals(model_lag)
 
 print(plot_cell_residuals(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+# model evaluation: calculate R2 ---------------------------------------------------------------------------------------
+
+SST <- sum((cell_sf_tidy_year$plant - mean(cell_sf_tidy_year$plant))^2)
+SSE <- sum((cell_sf_tidy_year$residuals - mean(cell_sf_tidy_year$residuals))^2)
+R2 <- 1 - SSE/SST
+
+print(paste('R2:', R2))
+
+# model evaluation: correlations between plant and explanatory variables---------------
+print(paste("corr plant-onset", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$onset)))
+print(paste("corr plant-lat", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$lat)))
+print(paste("corr plant-year", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$year)))
 
 # model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
 nb <- poly2nb(cell_sf_tidy_year)
@@ -218,6 +233,65 @@ lw <- nb2listw(nb, zero.policy = TRUE)
 moran_error <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
 print('moran for spatial error')
 moran_error
+
+```
+
+## spatial lag, for one year, DC and SC separately
+source: https://rspatial.org/analysis/7-spregression.html
+
+```{r}
+year_oi <- 2008
+
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+# filter a specific year
+cell_sf_tidy_year <- cell_sf_tidy %>% 
+                    filter(intensity == "DC") %>%
+                    filter(year == year_oi)
+
+nb <- poly2nb(cell_sf_tidy_year)
+lw <- nb2listw(nb, zero.policy = TRUE)
+
+# spatial lag model ---------------------------------------------------------------------
+model_lag = lagsarlm(plant ~ onset + lat, data=cell_sf_tidy_year, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+summary(model_lag)
+cell_sf_tidy_year$residuals <- residuals(model_lag)
+cell_sf_tidy_year$fitted.values <- fitted.values(model_lag)
+
+# model evaluation: plant and onset maps (only those used in the actual modeling) --------------------------------------
+print(plot_cell_onset(year_oi, cell_sf_tidy_year))
+print(plot_cell_plant(year_oi, cell_sf_tidy_year, "DC"))
+
+# model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
+test_plots(model_lag, "model_lag")
+plot(cell_sf_tidy_year$plant, cell_sf_tidy_year$fitted.values, main = paste(year_oi, "spatial lag fitted value vs actual value of plant"))
+
+# model evaluation: residual map --------------------------------------------------------------------------------------
+
+print(plot_cell_residuals(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+# model evaluation: calculate R2 ---------------------------------------------------------------------------------------
+
+SST <- sum((cell_sf_tidy_year$plant - mean(cell_sf_tidy_year$plant))^2)
+SSE <- sum((cell_sf_tidy_year$residuals - mean(cell_sf_tidy_year$residuals))^2)
+R2 <- 1 - SSE/SST
+
+print(paste('R2:', R2))
+
+# model evaluation: correlations between plant and explanatory variables---------------
+print(paste("corr plant-onset", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$onset)))
+print(paste("corr plant-lat", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$lat)))
+print(paste('sd of fitted. values', sd(cell_sf_tidy_year$fitted.values)))
+
+# model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
+nb <- poly2nb(cell_sf_tidy_year)
+resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
+#plot(cell_sf_tidy_year$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_lag <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
+print('moran for spatial lag')
+moran_lag
 
 ```
 

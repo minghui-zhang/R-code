@@ -427,6 +427,8 @@ cell_sf_tidy <- cell_sf_tidy %>%  drop_na %>%
 
 model_ols <- lm(plant ~ onset + intensity + lat + year_index + onset:intensity, data=cell_sf_tidy)
 summary(model_ols)
+cell_sf_tidy$residuals <- residuals(model_ols)
+cell_sf_tidy$fitted.values <- fitted.values(model_ols)
 
 # model evaluation: plant and onset maps (only those used in the actual modeling) --------------------------------------
 print(plot_cell_onset(year_oi, cell_sf_tidy))
@@ -434,11 +436,26 @@ print(plot_cell_plant(year_oi, cell_sf_tidy[cell_sf_tidy$intensity == "DC",], "D
 
 # model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
 test_plots(model_ols, "model_ols, all years")
+plot(cell_sf_tidy$plant, cell_sf_tidy$fitted.values, main = "regular OLS fitted value vs actual value of plant")
 
 # model evaluation: residual map --------------------------------------------------------------------------------------
-cell_sf_tidy$residuals <- residuals(model_ols)
+
 
 print(plot_cell_residuals(year_oi, cell_sf_tidy[cell_sf_tidy$intensity == "DC",], "DC"))
+
+
+# model evaluation: calculate R2 ---------------------------------------------------------------------------------------
+
+SST <- sum((cell_sf_tidy$plant - mean(cell_sf_tidy$plant))^2)
+SSE <- sum((cell_sf_tidy$residuals - mean(cell_sf_tidy$residuals))^2)
+R2 <- 1 - SSE/SST
+
+print(paste('R2:', R2))
+
+# model evaluation: correlations between plant and explanatory variables---------------
+print(paste("corr plant-onset", cor(cell_sf_tidy$plant, cell_sf_tidy$onset)))
+print(paste("corr plant-lat", cor(cell_sf_tidy$plant, cell_sf_tidy$lat)))
+print(paste("corr plant-year", cor(cell_sf_tidy$plant, cell_sf_tidy$year)))
 
 # model evaluation: see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
 
@@ -450,48 +467,48 @@ moran_basic_ols <- moran.mc(cell_sf_tidy$residuals, lw, 999, zero.policy = TRUE)
 print('moran with basic ols, all years')
 print(moran_basic_ols)
 
-# see if basic OLS residuals are temporally autocorrelated -----------------------------------------------------------
-
-# create observation data frame, for DC only. 
-# need to rename cell_ID so the same cell_ID can correspond to multiple years
+# # see if basic OLS residuals are temporally autocorrelated -----------------------------------------------------------
+# 
+# # create observation data frame, for DC only. 
+# # need to rename cell_ID so the same cell_ID can correspond to multiple years
 DC_cell <- cell_sf_tidy[cell_sf_tidy$intensity == "DC",] 
-
-# filter out all cells where there isn't data for all years
+# 
+# # filter out all cells where there isn't data for all years
 st_geometry(DC_cell) <- NULL
 DC_cell <- DC_cell[complete.cases(DC_cell),]
 cells_list <- list()
 i <- 1
 for (year in 2004:2014) {
-  cells_in_year <- DC_cell[DC_cell$year == year,]
-  cells_list[[i]] <- cells_in_year$label
-  i <- i + 1
+   cells_in_year <- DC_cell[DC_cell$year == year,]
+   cells_list[[i]] <- cells_in_year$label
+   i <- i + 1
 }
 full_data_cells <- Reduce(intersect, cells_list)
 DC_cell <- DC_cell[DC_cell$label %in% full_data_cells, ]
 
-# create observation data frame, for SC only. 
-# need to rename cell_ID so the same cell_ID can correspond to multiple years
-SC_cell <- cell_sf_tidy[cell_sf_tidy$intensity == "SC",] 
-
-# filter out all cells where there isn't data for all years
-st_geometry(SC_cell) <- NULL
-SC_cell <- SC_cell[complete.cases(SC_cell),]
-cells_list <- list()
-i <- 1
-for (year in 2004:2014) {
-  cells_in_year <- SC_cell[SC_cell$year == year,]
-  cells_list[[i]] <- cells_in_year$label
-  i <- i + 1
-}
-full_data_cells <- Reduce(intersect, cells_list)
-SC_cell <- SC_cell[SC_cell$label %in% full_data_cells, ]
-
-
+# # create observation data frame, for SC only. 
+# # need to rename cell_ID so the same cell_ID can correspond to multiple years
+# SC_cell <- cell_sf_tidy[cell_sf_tidy$intensity == "SC",] 
+# 
+# # filter out all cells where there isn't data for all years
+# st_geometry(SC_cell) <- NULL
+# SC_cell <- SC_cell[complete.cases(SC_cell),]
+# cells_list <- list()
+# i <- 1
+# for (year in 2004:2014) {
+#   cells_in_year <- SC_cell[SC_cell$year == year,]
+#   cells_list[[i]] <- cells_in_year$label
+#   i <- i + 1
+# }
+# full_data_cells <- Reduce(intersect, cells_list)
+# SC_cell <- SC_cell[SC_cell$label %in% full_data_cells, ]
+# 
+# 
 DC_nested_cell <- group_by(data.frame(DC_cell), label) %>% nest()
-SC_nested_cell <- group_by(data.frame(SC_cell), label) %>% nest()
-
+# SC_nested_cell <- group_by(data.frame(SC_cell), label) %>% nest()
+# 
 dwtest_one_cell <- function(data) {
-  dwtest(residuals ~ 1, data = data)
+   dwtest(residuals ~ 1, data = data)
 }
 
 DC_cell <- DC_nested_cell %>%
@@ -499,38 +516,69 @@ DC_cell <- DC_nested_cell %>%
   mutate(test_df = map(dwtest, tidy)) %>%
   unnest(test_df)
 
-SC_cell <- SC_nested_cell %>%
-  mutate(dwtest = map(data, dwtest_one_cell)) %>%
-  mutate(test_df = map(dwtest, tidy)) %>%
-  unnest(test_df)
-
+# SC_cell <- SC_nested_cell %>%
+#   mutate(dwtest = map(data, dwtest_one_cell)) %>%
+#   mutate(test_df = map(dwtest, tidy)) %>%
+#   unnest(test_df)
+# 
 # calculate proportion of p values below 5% significance, with Bonferroni correction
-
+# 
 DC_percent_auto <- mean(DC_cell$p.value < 0.05/nrow(DC_cell)) * 100
-SC_percent_auto <- mean(SC_cell$p.value < 0.05/nrow(SC_cell)) * 100
-
+# SC_percent_auto <- mean(SC_cell$p.value < 0.05/nrow(SC_cell)) * 100
+# 
 print(DC_percent_auto)
-print(SC_percent_auto)
-
-# plot areas with temporal autocorrelation in residuals
-# DC
+# print(SC_percent_auto)
+# 
+# # plot areas with temporal autocorrelation in residuals
+# # DC
 DC_temporalAuto <- as.data.frame(DC_cell[, c("label", "p.value")]) %>%
                       mutate(dwi.autocorr.p.value = p.value)
-cell_sf_tidy_DC <- cell_sf_tidy[cell_sf_tidy$intensity == "DC",] 
-cell_sf_tidy_DC <- merge(cell_sf_tidy_DC, DC_temporalAuto)
-cell_DC_tempAuto <- cell_sf_tidy_DC %>%
-                      filter(dwi.autocorr.p.value < 0.05/nrow(DC_cell))
+cell_sf_tidy_DC_tmp <- merge(cell_sf_tidy, DC_temporalAuto)
+cell_DC_tempAuto <- cell_sf_tidy_DC_tmp %>%
+                      filter(dwi.autocorr.p.value < 0.05)
 
-# SC
-SC_temporalAuto <- as.data.frame(SC_cell[, c("label", "p.value")]) %>%
-                      mutate(dwi.autocorr.p.value = p.value)
-cell_sf_tidy_SC <- cell_sf_tidy[cell_sf_tidy$intensity == "SC",] 
-cell_sf_tidy_SC <- merge(cell_sf_tidy_SC, SC_temporalAuto)
-cell_SC_tempAuto <- cell_sf_tidy_SC %>%
-                      filter(dwi.autocorr.p.value < 0.05/nrow(SC_cell))
-
+# # SC
+# SC_temporalAuto <- as.data.frame(DC_cell[, c("label", "p.value")]) %>%
+#                       mutate(dwi.autocorr.p.value = p.value)
+# cell_sf_tidy_SC_tmp <- merge(cell_sf_tidy, SC_temporalAuto)
+# cell_SC_tempAuto <- cell_sf_tidy_SC_tmp %>%
+#                       filter(dwi.autocorr.p.value < 0.05)
+# 
 plot_cell_tempAuto(year, cell_DC_tempAuto, "DC")
-plot_cell_tempAuto(year, cell_SC_tempAuto, "SC")
+# plot_cell_tempAuto(year, cell_SC_tempAuto, "SC")
+
+# print map to show cell_ID, for plotting residual, onset and plant over time
+
+# pal <- colorNumeric(
+#   palette = "YlGnBu",
+#   domain = cell_DC_tempAuto$dwi.autocorr.p.value
+# )
+# 
+# leaflet(cell_DC_tempAuto) %>%
+#   addTiles() %>%
+#   addPolygons(weight = 0.1,
+#     color = ~pal(dwi.autocorr.p.value),
+#               popup = cell_DC_tempAuto$cell_ID) %>%
+#   addLegend("bottomright", 
+#             pal = pal,
+#             values = ~dwi.autocorr.p.value,
+#             title = "dwi.autocorr.p.value",
+#             opacity = 1
+# )
+#  
+# cell_ID_oi <- "+4285+5008"
+# 
+# specific_cell <- cell_sf_tidy %>% 
+#                     filter(cell_ID == cell_ID_oi) %>%
+#                     filter(intensity == "DC")
+# 
+# plot(specific_cell$year, specific_cell$residuals, col = "red", type = "l", lwd = 2.5,
+#      ylim = c(-30, 50), ylab = "day", xlab = "year",
+#      main = paste("regular OLS DC for cell", cell_ID_oi))
+# lines(specific_cell$year, specific_cell$plant - mean(specific_cell$plant), col = "green")
+# lines(specific_cell$year, specific_cell$onset- mean(specific_cell$onset), col = "blue")
+# legend(2004, 50, legend=c("residual", "plant demeaned", "onset demeaned"),
+#        col=c("red", "green", "blue"), lty=c(1,1,1))
 ```
 
 

@@ -137,23 +137,32 @@ cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
 ```
 
 
-## spatial panel model with all years
+## spatial panel model with all years, DC and SC fitted separately
 
 ```{r}
-year_oi <- 2014 # this is only for visualization
+year_oi <- 2008 # this is only for visualization
 
 library(splm)
 library(plm)
+library(leaflet)
 
 # filter for only DC cells
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
-cell_sf_tidy_DC <- cell_sf_tidy %>% 
-                    filter(intensity == "DC")
 
-# filter out all cells where there isn't data for all years
+# TEST: if results improve if only use one year
+
+cell_sf_tidy$plant_demeaned <- (cell_sf_tidy$plant - mean(cell_sf_tidy$plant, na.rm = TRUE))
+cell_sf_tidy$onset_demeaned <- cell_sf_tidy$onset - mean(cell_sf_tidy$onset, na.rm = TRUE)
+cell_sf_tidy$lat_demeaned <- cell_sf_tidy$lat - mean(cell_sf_tidy$lat, na.rm = TRUE)
+cell_sf_tidy$year_demeaned <- cell_sf_tidy$year_index - mean(cell_sf_tidy$year_index, na.rm = TRUE)
+
+cell_sf_tidy_DC <- cell_sf_tidy %>% 
+                    filter(intensity == "DC") 
+
+#filter out all cells where there isn't data for all years
 cells_list <- list()
 i <- 1
-for (year in 2004:2014) {
+for (year in c(2004:2014)) { # 2004:2014
   cells_in_year <- cell_sf_tidy_DC[cell_sf_tidy_DC$year == year,]
   cells_list[[i]] <- cells_in_year$cell_ID
   i <- i + 1
@@ -163,7 +172,7 @@ cell_sf_tidy_DC <- cell_sf_tidy_DC[cell_sf_tidy_DC$cell_ID %in% full_data_cells,
 
 
 # calculate neighbors
-cell_sf_tidy_DC_year <- cell_sf_tidy_DC[cell_sf_tidy_DC$year == 2014,]
+cell_sf_tidy_DC_year <- cell_sf_tidy_DC[cell_sf_tidy_DC$year == year_oi,]
 nb <- poly2nb(cell_sf_tidy_DC_year) # only for ONE year
 lw <- nb2listw(nb, zero.policy = TRUE) # listw object
 
@@ -187,14 +196,14 @@ cell_tidy_DC_pdfo <- cell_tidy_DC_pdf[order(cell_tidy_DC_pdf$year) , ] # pdata.f
 # spatial structure is specified by combining logical arguments lag (if TRUE, adds spatial autoregressive term in the dependent variable) and spatial.error (takes three values: "b", "kkp", or "none" for no spatial error correlation")
 
 # TEST: if de-meaned values help with zero mean residual
-cell_tidy_DC_pdfo$plant_demeaned <- cell_tidy_DC_pdfo$plant - mean(cell_tidy_DC_pdfo$plant)
-cell_tidy_DC_pdfo$onset_demeaned <- cell_tidy_DC_pdfo$onset - mean(cell_tidy_DC_pdfo$onset)
-cell_tidy_DC_pdfo$lat_demeaned <- cell_tidy_DC_pdfo$lat - mean(cell_tidy_DC_pdfo$lat)
 
-cell_DC_model1 = spml(plant_demeaned ~ onset_demeaned + lat_demeaned + year, data=cell_tidy_DC_pdfo, listw=lw, 
+
+cell_DC_model1 = spml(plant_demeaned ~ onset_demeaned + lat_demeaned + year_demeaned, data=cell_tidy_DC_pdfo, listw=lw, 
                     model = "random", lag = TRUE, spatial.error = "b")
 
 summary(cell_DC_model1)
+cell_sf_tidy_DC$residuals <- residuals(cell_DC_model1)
+cell_sf_tidy_DC$fitted.values <- fitted.values(cell_DC_model1)
 
 # this doesn't work, object lengths differ
 #cell_DC_model2 = spml(plant ~ onset, data=cell_tidy_DC_pdfo, listw=lw, effect = "individual", model="within", spatial.error="none", lag = T)
@@ -210,13 +219,209 @@ print(plot_cell_plant(year_oi, cell_sf_tidy_DC, "DC"))
 
 # model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
 test_plots(cell_DC_model1, "model1 spatial panel")
+plot(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$fitted.values + mean(cell_sf_tidy_DC$plant), main = "spatial panel fitted value vs actual value of plant", ylab = "scaled fitted.values")
+abline(h = mean(cell_sf_tidy_DC$fitted.values + mean(cell_sf_tidy_DC$plant)), col = "blue")
+abline(v = mean(cell_sf_tidy_DC$plant), col = "blue")
+abline(0,1, col = "gray", lwd = 3)
 
-# model evaluation: residual map --------------------------------------------------------------------------------------
-cell_sf_tidy_DC$residuals <- residuals(cell_DC_model1)
+# model evaluation: residual map ---------------------------------------------------------------------------------------
+
 
 print(plot_cell_residuals(year_oi, cell_sf_tidy_DC, "DC"))
 
-# ADD SPATIAL AND TEMPORAL AUTOCORRELATION PLOTS
+# model evaluation: calculate R2 ---------------------------------------------------------------------------------------
+
+SST <- sum((cell_sf_tidy_DC$plant_demeaned - mean(cell_sf_tidy_DC$plant_demeaned))^2)
+SSE <- sum((cell_sf_tidy_DC$residuals - mean(cell_sf_tidy_DC$residuals))^2)
+R2 <- 1 - SSE/SST
+
+print(paste('R2:', R2))
+
+# model evaluation: correlations between plant and explanatory variables---------------
+print(paste("corr plant-onset", cor(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$onset)))
+print(paste("corr plant-lat", cor(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$lat)))
+print(paste("corr plant-year", cor(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$year)))
+print(paste('sd of fitted. values', sd(cell_sf_tidy_DC$fitted.values)))
+
+# model evaluation: see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
+
+ nb <- poly2nb(cell_sf_tidy_DC)
+ #resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
+ #plot(cell_sf_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
+ lw <- nb2listw(nb, zero.policy = TRUE)
+ moran_basic_ols <- moran.mc(cell_sf_tidy_DC$residuals, lw, 999, zero.policy = TRUE)
+ print('moran with basic ols, all years')
+ print(moran_basic_ols)
+ 
+# # see if basic OLS residuals are temporally autocorrelated -----------------------------------------------------------
+# 
+# # create observation data frame, for DC only. 
+# # need to rename cell_ID so the same cell_ID can correspond to multiple years
+ DC_cell <- cell_sf_tidy_DC
+# 
+# # filter out all cells where there isn't data for all years
+ st_geometry(DC_cell) <- NULL
+ DC_cell <- DC_cell[complete.cases(DC_cell),]
+ cells_list <- list()
+ i <- 1
+ for (year in 2004:2014) {
+   cells_in_year <- DC_cell[DC_cell$year == year,]
+   cells_list[[i]] <- cells_in_year$label
+   i <- i + 1
+ }
+ full_data_cells <- Reduce(intersect, cells_list)
+DC_cell <- DC_cell[DC_cell$label %in% full_data_cells, ]
+ 
+ 
+ DC_nested_cell <- group_by(data.frame(DC_cell), label) %>% nest()
+ 
+ dwtest_one_cell <- function(data) {
+   dwtest(residuals ~ 1, data = data)
+ }
+ 
+ DC_cell <- DC_nested_cell %>%
+   mutate(dwtest = map(data, dwtest_one_cell)) %>%
+   mutate(test_df = map(dwtest, tidy)) %>%
+   unnest(test_df)
+ 
+# calculate proportion of p values below 5% significance, with Bonferroni correction
+
+DC_percent_auto <- mean(DC_cell$p.value < 0.05/nrow(DC_cell)) * 100
+
+print(DC_percent_auto)
+
+# plot areas with temporal autocorrelation in residuals
+# DC
+DC_temporalAuto <- as.data.frame(DC_cell[, c("label", "p.value")]) %>%
+                      mutate(dwi.autocorr.p.value = p.value)
+cell_sf_tidy_DC_tmp <- merge(cell_sf_tidy_DC, DC_temporalAuto)
+cell_DC_tempAuto <- cell_sf_tidy_DC_tmp %>%
+                      filter(dwi.autocorr.p.value < 0.05)
+
+# DC
+plot_cell_tempAuto(year, cell_DC_tempAuto, "DC")
+ 
+ plot(cell_sf_tidy_DC$year, cell_sf_tidy_DC$residuals) 
+ abline(h = 0)
+ 
+# print map to show cell_ID, for plotting residual, onset and plant over time
+
+# pal <- colorNumeric(
+#   palette = "YlGnBu",
+#   domain = cell_DC_tempAuto$dwi.autocorr.p.value
+# )
+# 
+# leaflet(cell_DC_tempAuto) %>%
+#   addTiles() %>%
+#   addPolygons(weight = 0.1,
+#     color = ~pal(dwi.autocorr.p.value),
+#               popup = cell_DC_tempAuto$cell_ID) %>%
+#   addLegend("bottomright", 
+#             pal = pal,
+#             values = ~dwi.autocorr.p.value,
+#             title = "dwi.autocorr.p.value",
+#             opacity = 1
+# )
+#  
+# cell_ID_oi <- "+3895+4563"
+# 
+# specific_cell <- cell_sf_tidy_DC %>% 
+#                     filter(cell_ID == cell_ID_oi)
+# 
+# plot(specific_cell$year, specific_cell$residuals, type = "l", col = "red", lwd = 2.5,
+#      ylim = c(-30, 50), ylab = "day", xlab = "year",
+#      main = paste("spatial panel for cell", cell_ID_oi))
+# lines(specific_cell$year, specific_cell$plant_demeaned, col = "green")
+# lines(specific_cell$year, specific_cell$onset_demeaned, col = "blue")
+# legend(2004, 50, legend=c("residual", "plant demeaned", "onset demeaned"),
+#        col=c("red", "green", "blue"), lty=c(1,1,1))
+```
+
+## spatial panel model with one year, DC and SC fitted separately
+
+```{r}
+
+year_oi <- 2008 # this is for fitting
+
+library(splm)
+library(plm)
+library(leaflet)
+
+# filter for only DC cells
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na
+
+cell_sf_tidy$plant_demeaned <- (cell_sf_tidy$plant - mean(cell_sf_tidy$plant, na.rm = TRUE))#/sd(cell_sf_tidy$plant, na.rm = TRUE)
+cell_sf_tidy$onset_demeaned <- (cell_sf_tidy$onset - mean(cell_sf_tidy$onset, na.rm = TRUE))#/sd(cell_sf_tidy$onset - mean(cell_sf_tidy$onset, na.rm = TRUE))
+cell_sf_tidy$lat_demeaned <- (cell_sf_tidy$lat - mean(cell_sf_tidy$lat, na.rm = TRUE))#/sd(cell_sf_tidy$lat, na.rm = TRUE)
+
+cell_sf_tidy_DC <- cell_sf_tidy %>% 
+                    filter(intensity == "DC") %>%
+                    filter(year == year_oi)
+
+# calculate neighbors
+nb <- poly2nb(cell_sf_tidy_DC) # only for ONE year
+lw <- nb2listw(nb, zero.policy = TRUE) # listw object
+
+# get only the regions with links, redo neighbors calc, filter the data for all years accordingly
+cell_sf_tidy_DC <- cell_sf_tidy_DC[card(nb) != 0,]
+nb <- poly2nb(cell_sf_tidy_DC) # only for ONE year
+lw <- nb2listw(nb, zero.policy = TRUE) # listw object
+linked_cells <- cell_sf_tidy_DC$cell_ID
+cell_sf_tidy_DC <- cell_sf_tidy_DC[cell_sf_tidy_DC$cell_ID %in% linked_cells, ]
+cell_sf_tidy_DC <- cell_sf_tidy_DC[order(cell_sf_tidy_DC$year) , ] # re-order to match p.data.frame
+
+# convert data.frame to pdata.frame object to apply as panel data (use package plm)
+cell_tidy_DC_pdf <- pdata.frame(cell_sf_tidy_DC, c("cell_ID","year"))
+
+# data must be stacked first by time period and then by region
+# first index "year", second index "region" - i.e. have a column for region, then column for year
+cell_tidy_DC_pdfo <- cell_tidy_DC_pdf[order(cell_tidy_DC_pdf$year) , ] # pdata.frame
+
+# spml is the general wrapper function and the argument model controls the specification
+# model = "within" for fixed effects; "random" for random effects, "pooling" for no effects
+# spatial structure is specified by combining logical arguments lag (if TRUE, adds spatial autoregressive term in the dependent variable) and spatial.error (takes three values: "b", "kkp", or "none" for no spatial error correlation")
+cell_DC_model1 = spml(plant_demeaned ~ onset_demeaned + lat_demeaned, data=cell_tidy_DC_pdfo, listw=lw, 
+                    model = "random", lag = TRUE, spatial.error = "b")
+
+summary(cell_DC_model1)
+cell_sf_tidy_DC$residuals <- residuals(cell_DC_model1)
+cell_sf_tidy_DC$fitted.values <- fitted.values(cell_DC_model1)
+
+# model evaluation: plant and onset maps (only those used in the actual modeling) --------------------------------------
+print(plot_cell_onset(year_oi, cell_sf_tidy_DC))
+print(plot_cell_plant(year_oi, cell_sf_tidy_DC, "DC"))
+
+# model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
+test_plots(cell_DC_model1, "model1 spatial panel")
+plot(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$fitted.values + mean(cell_sf_tidy_DC$plant), main = "spatial panel fitted value vs actual value of plant", ylab = "scaled fitted.values")
+
+# model evaluation: residual map ---------------------------------------------------------------------------------------
+
+print(plot_cell_residuals(year_oi, cell_sf_tidy_DC, "DC"))
+
+# model evaluation: calculate R2 ---------------------------------------------------------------------------------------
+
+SST <- sum((cell_sf_tidy_DC$plant_demeaned - mean(cell_sf_tidy_DC$plant_demeaned))^2)
+SSE <- sum((cell_sf_tidy_DC$residuals - mean(cell_sf_tidy_DC$residuals))^2)
+R2 <- 1 - SSE/SST
+
+print(paste('R2:', R2))
+
+# model evaluation: correlations between plant and explanatory variables---------------
+print(paste("corr plant-onset", cor(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$onset)))
+print(paste("corr plant-lat", cor(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$lat)))
+print(paste('sd of fitted.values', sd(cell_sf_tidy_DC$fitted.values)))
+
+# model evaluation: see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
+
+nb <- poly2nb(cell_sf_tidy_DC)
+#resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
+#plot(cell_sf_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_basic_ols <- moran.mc(cell_sf_tidy_DC$residuals, lw, 999, zero.policy = TRUE)
+print('moran with basic ols, all years')
+print(moran_basic_ols)
+ 
 ```
 
 
