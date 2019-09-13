@@ -154,7 +154,10 @@ cell_sf_tidy <- cell_sf_tidy %>%  drop_na
 cell_sf_tidy$plant_demeaned <- (cell_sf_tidy$plant - mean(cell_sf_tidy$plant, na.rm = TRUE))
 cell_sf_tidy$onset_demeaned <- cell_sf_tidy$onset - mean(cell_sf_tidy$onset, na.rm = TRUE)
 cell_sf_tidy$lat_demeaned <- cell_sf_tidy$lat - mean(cell_sf_tidy$lat, na.rm = TRUE)
+cell_sf_tidy$lon_demeaned <- cell_sf_tidy$lon - mean(cell_sf_tidy$lon, na.rm = TRUE)
+cell_sf_tidy$soyarea_demeaned <- cell_sf_tidy$soy_area_k - mean(cell_sf_tidy$soy_area_k, na.rm = TRUE)
 cell_sf_tidy$year_demeaned <- cell_sf_tidy$year_index - mean(cell_sf_tidy$year_index, na.rm = TRUE)
+cell_sf_tidy$year_factor <- as.factor(cell_sf_tidy$year)
 
 cell_sf_tidy_DC <- cell_sf_tidy %>% 
                     filter(intensity == "DC") 
@@ -198,8 +201,9 @@ cell_tidy_DC_pdfo <- cell_tidy_DC_pdf[order(cell_tidy_DC_pdf$year) , ] # pdata.f
 # TEST: if de-meaned values help with zero mean residual
 
 
-cell_DC_model1 = spml(plant_demeaned ~ onset_demeaned + lat_demeaned + year_demeaned, data=cell_tidy_DC_pdfo, listw=lw, 
-                    model = "random", lag = TRUE, spatial.error = "b")
+cell_DC_model1 = spml(plant_demeaned ~ onset_demeaned + year_factor, data=cell_tidy_DC_pdfo, listw=lw, 
+                    model = "random", lag = TRUE, spatial.error = "b") 
+#+ lat_demeaned + lon_demeaned + soyarea_demeaned + year_demeaned
 
 summary(cell_DC_model1)
 cell_sf_tidy_DC$residuals <- residuals(cell_DC_model1)
@@ -223,6 +227,8 @@ plot(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$fitted.values + mean(cell_sf_tidy_DC
 abline(h = mean(cell_sf_tidy_DC$fitted.values + mean(cell_sf_tidy_DC$plant)), col = "blue")
 abline(v = mean(cell_sf_tidy_DC$plant), col = "blue")
 abline(0,1, col = "gray", lwd = 3)
+
+plot(cell_sf_tidy_DC$plant, cell_sf_tidy_DC$residuals, main = "plant vs residuals")
 
 # model evaluation: residual map ---------------------------------------------------------------------------------------
 
