@@ -283,7 +283,9 @@ test_smoothing_GEE <- function(ts, numRuns, elimPoints, window_EVI_1_vector, win
     scale_color_manual(values = c('black', 'darkgreen', 'orange', 'orange', 'red')) +
     theme_bw() +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+panel.background = element_blank(), axis.line = element_line(colour = "black"),
+axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+text = element_text(size=15)) +
     ggtitle('Peak, GEE') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
@@ -299,8 +301,9 @@ panel.background = element_blank(), axis.line = element_line(colour = "black")) 
     ylim(25, 55) +
     scale_color_manual(values = c('black', 'darkgreen', 'orange', 'orange', 'red')) +
     theme_bw() +
-    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+text = element_text(size=15)) +
     ggtitle('Quarter period, GEE') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')

@@ -289,7 +289,10 @@ test_smoothing_harmonic_nls_simple <- function(ts, numRuns, elimPoints, window_E
     scale_color_manual(values = c('black', 'orange')) +
     theme_bw() +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+panel.background = element_blank(), axis.line = element_line(colour = "black"),
+axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), 
+text = element_text(size=15)) +
     ggtitle('Peak, harmonic nls') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
@@ -306,7 +309,9 @@ panel.background = element_blank(), axis.line = element_line(colour = "black")) 
     scale_color_manual(values = c('black', 'orange')) +
     theme_bw() +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+panel.background = element_blank(), axis.line = element_line(colour = "black"),
+axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), 
+text = element_text(size=15)) +
     ggtitle('Quarter period, harmonic nls') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')

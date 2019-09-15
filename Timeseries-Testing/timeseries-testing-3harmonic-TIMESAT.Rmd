@@ -302,7 +302,10 @@ test_smoothing_harmonic_TIMESAT <- function(ts, numRuns, elimPoints, window_EVI_
     scale_color_manual(values = c('black', 'orange')) +
     theme_bw() +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+panel.background = element_blank(), axis.line = element_line(colour = "black"),
+axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), 
+text = element_text(size=15)) +
     ggtitle('Peak, harmonic TIMESAT') +
     xlab('Number of eliminated points') +
     ylab('Peak DOY since Aug 1')
@@ -319,7 +322,9 @@ panel.background = element_blank(), axis.line = element_line(colour = "black")) 
     scale_color_manual(values = c('black', 'orange')) +
     theme_bw() +
     theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+panel.background = element_blank(), axis.line = element_line(colour = "black"),
+axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank(), 
+text = element_text(size=15)) +
     ggtitle('Quarter period, harmonic TIMESAT') +
     xlab('Number of eliminated points') +
     ylab('Quarter period [days]')
@@ -344,5 +349,4 @@ set.seed(2)
 
 # fewer smoothing combinations
 test_smoothing_harmonic_TIMESAT(ts, 50, seq(0, 10), c(20,  0), c(20, 0), c('smoothed EVI', 'unsmoothed EVI'), 20, 140, 120, 190, '2016-09-01', '2017-07-01')
-
 ```
