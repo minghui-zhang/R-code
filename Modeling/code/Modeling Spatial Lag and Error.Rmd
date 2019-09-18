@@ -164,12 +164,19 @@ print(plot_cell_onset(year_oi, cell_sf_tidy_year))
 print(plot_cell_plant(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
 
 # model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
+
+plot(cell_sf_tidy_year$plant, cell_sf_tidy_year$residuals, main = "plant vs residuals")
+
 test_plots(model_lag, "model_lag")
 plot(cell_sf_tidy_year$plant, cell_sf_tidy_year$fitted.values, main = paste(year_oi, "spatial lag fitted value vs actual value of plant"))
+abline(h = mean(cell_sf_tidy_year$fitted.values), col = "blue")
+abline(v = mean(cell_sf_tidy_year$plant), col = "blue")
+abline(0,1, col = "gray", lwd = 3)
 
 # model evaluation: residual map --------------------------------------------------------------------------------------
 
 print(plot_cell_residuals(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
 
 # model evaluation: calculate R2 ---------------------------------------------------------------------------------------
 
@@ -184,14 +191,37 @@ print(paste("corr plant-onset", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$o
 print(paste("corr plant-lat", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$lat)))
 print(paste("corr plant-year", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$year)))
 
+plot(cell_sf_tidy_year$onset, cell_sf_tidy_year$residuals, main = "spatial lag, onset vs residual (exogeneity)")
+plot(cell_sf_tidy_year$lat, cell_sf_tidy_year$residuals, main = "spatial lag, latitude vs residual (exogeneity)")
+
+
+# multicollinearity: correlation between predictors
+predictors <- cell_sf_tidy_year[,c("lat", "onset", "year")]
+st_geometry(predictors) <- NULL
+print(cor(predictors))
+
 # model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
-nb <- poly2nb(cell_sf_tidy_year)
-resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
-#plot(cell_sf_tidy_year$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
+to_autocorrelation <- cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC", ]
+nb <- poly2nb(to_autocorrelation)
+resnb <- sapply(nb, function(x) mean(to_autocorrelation$residuals_lag[x]))
+#plot(to_autocorrelation$residuals_lag, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = paste("Spatial lag,", year_oi))
 lw <- nb2listw(nb, zero.policy = TRUE)
-moran_lag <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
-print('moran for spatial lag')
-moran_lag
+moran_lag_residual <- moran.mc(to_autocorrelation$residuals, lw, 999, zero.policy = TRUE)
+print('moran for spatial lag, residual')
+moran_lag_residual
+moran_lag_onset <- moran.mc(to_autocorrelation$onset, lw, 999, zero.policy = TRUE)
+print('moran I of onset')
+print(moran_lag_onset)
+moran_lag_plant <- moran.mc(to_autocorrelation$plant, lw, 999, zero.policy = TRUE)
+print('moran I of plant')
+print(moran_lag_plant)
+
+# percent of total data that's used in regression
+# full year data:
+full_year_cell_sf_tidy <- cell_sf_tidy %>% 
+                    filter(year == year_oi)
+print(paste('percent total data used:', 100*nrow(cell_sf_tidy_year)/nrow(full_year_cell_sf_tidy)))
+
 
 ```
 
@@ -224,6 +254,9 @@ test_plots(model_error, "model_error")
 cell_sf_tidy_year$residuals <- residuals(model_error)
 
 print(plot_cell_residuals(year_oi, cell_sf_tidy_year[cell_sf_tidy_year$intensity == "DC",], "DC"))
+
+plot(cell_sf_tidy_year$onset, cell_sf_tidy_year$residuals, main = "spatial error, onset vs residual (exogeneity)")
+plot(cell_sf_tidy_year$lat, cell_sf_tidy_year$residuals, main = "spatial error, latitude vs residual (exogeneity)")
 
 # model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
 nb <- poly2nb(cell_sf_tidy_year)
@@ -284,6 +317,9 @@ print(paste("corr plant-onset", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$o
 print(paste("corr plant-lat", cor(cell_sf_tidy_year$plant, cell_sf_tidy_year$lat)))
 print(paste('sd of fitted. values', sd(cell_sf_tidy_year$fitted.values)))
 
+plot(cell_sf_tidy_year$onset, cell_sf_tidy_year$residuals, main = "spatial lag, onset vs residual (exogeneity)")
+plot(cell_sf_tidy_year$lat, cell_sf_tidy_year$residuals, main = "spatial lag, latitude vs residual (exogeneity)")
+
 # model evaluation: see if residuals are spatially autocorrelated with scatterplot -------------------------
 nb <- poly2nb(cell_sf_tidy_year)
 resnb <- sapply(nb, function(x) mean(cell_sf_tidy_year$residuals_lag[x]))
@@ -292,6 +328,14 @@ lw <- nb2listw(nb, zero.policy = TRUE)
 moran_lag <- moran.mc(cell_sf_tidy_year$residuals, lw, 999, zero.policy = TRUE)
 print('moran for spatial lag')
 moran_lag
+
+# percent of total data that's used in regression
+# full year data:
+full_year_cell_sf_tidy <- cell_sf_tidy %>% 
+                    filter(intensity == "DC") %>%
+                    filter(year == year_oi)
+print(paste('percent total data used:', 100*nrow(cell_sf_tidy_year)/nrow(full_year_cell_sf_tidy)))
+
 
 ```
 

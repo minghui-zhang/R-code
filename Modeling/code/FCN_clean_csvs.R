@@ -67,6 +67,17 @@ tidy_by_intensity_plant <- function(data, SC_name, DC_name) {
   return(output)
 }
 
+tidy_by_intensity_harvest <- function(data, SC_name, DC_name) {
+  output = data %>%
+    gather(DC_name, SC_name, key = "intensity", value = "harvest") %>%
+    mutate_if(is.character, 
+              str_replace_all, pattern = DC_name, replacement = "DC") %>%
+    mutate_if(is.character, 
+              str_replace_all, pattern = SC_name, replacement = "SC")
+  
+  return(output)
+}
+
 tidy_by_intensity_delay <- function(data, SC_name, DC_name) {
   output = data %>%
     gather(DC_name, SC_name, key = "intensity", value = "delay") %>%

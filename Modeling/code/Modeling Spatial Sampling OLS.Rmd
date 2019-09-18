@@ -76,7 +76,7 @@ plot_cell_onset <- function(year, cell_data) {
   ggplot(cell_year) +
    geom_sf(aes(fill = onset)) +
    scale_fill_viridis() +
-   ggtitle(paste("Onset for spatial panel", year)) +
+   ggtitle(paste("Onset for spatial sampling", year)) +
    geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
    theme_bw()
 }
@@ -87,7 +87,7 @@ plot_cell_residuals <- function(year, cell_data, intensity) {
   ggplot(cell_year) +
    geom_sf(aes(fill = residuals)) +
    scale_fill_viridis() +
-   ggtitle(paste(intensity, "residuals for spatial panel", year)) +
+   ggtitle(paste(intensity, "residuals for spatial sampling", year)) +
    geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
    theme_bw()
 }
@@ -98,7 +98,7 @@ plot_cell_plant <- function(year, cell_data, intensity) {
   ggplot(cell_year) +
    geom_sf(aes(fill = plant)) +
    scale_fill_viridis() +
-   ggtitle(paste(intensity, "plant for spatial panel", year)) +
+   ggtitle(paste(intensity, "plant for spatial sampling", year)) +
    geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
    theme_bw()
 }
@@ -109,7 +109,7 @@ plot_cell_tempAuto <- function(year, cell_data, intensity) {
   ggplot(cell_year) +
    geom_sf(aes(fill = dwi.autocorr.p.value)) +
    scale_fill_viridis() +
-   ggtitle(paste(intensity, "signif temporal autocorrelation for basic OLS", year)) +
+   ggtitle(paste(intensity, "signif temporal autocorrelation for spatial panel", year)) +
    geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
    theme_bw()
 }
@@ -142,10 +142,10 @@ cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
 
 ```{r}
 
-year_oi <- 2010 # for mapping purposes
+year_oi <- 2008 # for mapping purposes
 # the amount to move the grid left, right, up and down to see impact of different grid locations
-lat_offset <- -0.5 # shift by 0.25 units
-lon_offset <- -0.5
+lat_offset <- 0.5 # shift by 0.25 units
+lon_offset <- 0.5
 
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
 
@@ -158,7 +158,7 @@ cell_sp_tidy <- as(cell_sf_tidy, 'Spatial')
 #samples <- cell_sf_tidy[seq(1, nrow(cell_sf_tidy), by = 11), ] #spsample(x = cell_sp_tidy, n = 20, type = "regular")
 
 # generate regular grid of points
-samplePoints <- makegrid(MT_outline, cellsize = 2)
+samplePoints <- makegrid(MT_outline, cellsize = 1.25)
 samplePoints$x1 <- samplePoints$x1 + lon_offset
 samplePoints$x2 <- samplePoints$x2 + lat_offset
 samplePoints <- SpatialPoints(samplePoints, proj4string = CRS(proj4string(MT_outline)))
@@ -195,10 +195,10 @@ ggplot() +
    theme_bw()
 ```
 
-## spatial panel model with all years, DC and SC fitted separately
+## spatial sampling then OLS
 
 ```{r}
-year_oi <- 2014 # this is only for visualization
+year_oi <- 2008 # this is only for visualization
 
 library(leaflet)
 
@@ -237,26 +237,45 @@ R2 <- 1 - SSE/SST
 
 print(paste('R2:', R2))
 
-# model evaluation: correlations between plant and explanatory variables---------------
+# model evaluation: correlations between plant/onset and explanatory variables---------------
 # print(paste("corr plant-onset", cor(samples_polys$plant, samples_polys$onset)))
 # print(paste("corr plant-lat", cor(samples_polys$plant, samples_polys$lat)))
 # print(paste("corr plant-year", cor(samples_polys$plant, samples_polys$year)))
 # print(paste('sd of fitted. values', sd(samples_polys$fitted.values)))
+plot(samples_polys$onset, samples_polys$residuals, main = "spatial sample, onset vs residual (exogeneity)")
+plot(samples_polys$lat, samples_polys$residuals, main = "spatial sample, latitude vs residual (exogeneity)")
 
-plot(samples_polys$year, samples_polys$residuals) 
+plot(samples_polys$year, samples_polys$residuals, main = "spatial sample, latitude vs residual (exogeneity)") 
 abline(h = 0)
  
+# multicollinearity: correlation between predictors
+predictors <- samples_polys[,c("lat", "onset", "year")]
+st_geometry(predictors) <- NULL
+print(cor(predictors))
+
 # model evaluation: see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
+# need 'one layer': one year, one intensity
+to_autocorrelation <- samples_polys[samples_polys$year == year_oi & samples_polys$intensity == "DC", ]
+to_autocorrelation_sp <- as(to_autocorrelation, "Spatial")
+st_geometry(to_autocorrelation) <- NULL # turn to_autocorrelation into data frame
+centroids <- coordinates(to_autocorrelation_sp)
+to_autocorrelation_points <- SpatialPointsDataFrame(coords = centroids, data = to_autocorrelation)
+# nb <- poly2nb(to_autocorrelation) #IF SAMPLES IS POLYGON DATA
+nb<-knn2nb(knearneigh(to_autocorrelation_points)) # IF SAMPLES IS POINT DATA
+# #resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
+# #plot(cell_sf_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
+lw <- nb2listw(nb, zero.policy = TRUE)
+moran_residual <- moran.mc(to_autocorrelation_points$residuals, lw, 999, zero.policy = TRUE)
+print('moran I for residuals')
+print(moran_residual)
+moran_onset <- moran.mc(to_autocorrelation_points$onset, lw, 999, zero.policy = TRUE)
+print('moran I of onset with basic ols')
+print(moran_onset)
+moran_plant <- moran.mc(to_autocorrelation_points$plant, lw, 999, zero.policy = TRUE)
+print('moran I of plant')
+print(moran_plant)
 
-nb <- poly2nb(samples_polys) #IF SAMPLES IS POLYGON DATA
-#nb<-knn2nb(knearneigh(samples_points)) # IF SAMPLES IS POINT DATA
+# percent of total data that's used in regression
+print(paste('percent total data used:', 100*nrow(samples_polys)/nrow(cell_sf_tidy)))
 
- #resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
- #plot(cell_sf_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
- lw <- nb2listw(nb, zero.policy = TRUE)
- moran_basic_ols <- moran.mc(samples_polys$residuals, lw, 999, zero.policy = TRUE)
- print('moran with basic ols, all years')
- print(moran_basic_ols)
- 
- 
 ```

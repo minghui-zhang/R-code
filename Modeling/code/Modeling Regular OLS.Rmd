@@ -418,14 +418,14 @@ evaluate_model(model$final_model, model$final_predictors, data, "output from pro
 
 ```{r}
 
-year_oi <- 2014
+year_oi <- 2008
 
 # do basic OLS model --------------------------------------------------------------------------------------------------
 
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na %>%
                               mutate(year_factor = as.factor(year))
 
-model_ols <- lm(plant ~ onset + intensity + lat + year_index + onset:intensity, data=cell_sf_tidy)
+model_ols <- lm(plant ~ onset + intensity + lat + year + onset:intensity, data=cell_sf_tidy)
 summary(model_ols)
 cell_sf_tidy$residuals <- residuals(model_ols)
 cell_sf_tidy$fitted.values <- fitted.values(model_ols)
@@ -437,10 +437,13 @@ print(plot_cell_plant(year_oi, cell_sf_tidy[cell_sf_tidy$intensity == "DC",], "D
 # model evaluation: residual vs fitted value and vs index, and residual qq plot ----------------------------------------
 test_plots(model_ols, "model_ols, all years")
 plot(cell_sf_tidy$plant, cell_sf_tidy$fitted.values, main = "regular OLS fitted value vs actual value of plant")
+abline(h = mean(cell_sf_tidy$fitted.values), col = "blue")
+abline(v = mean(cell_sf_tidy$plant), col = "blue")
+abline(0,1, col = "gray", lwd = 3)
 
 # model evaluation: residual map --------------------------------------------------------------------------------------
 
-
+plot(cell_sf_tidy$plant, cell_sf_tidy$residuals, main = "plant vs residuals")
 print(plot_cell_residuals(year_oi, cell_sf_tidy[cell_sf_tidy$intensity == "DC",], "DC"))
 
 
@@ -457,15 +460,33 @@ print(paste("corr plant-onset", cor(cell_sf_tidy$plant, cell_sf_tidy$onset)))
 print(paste("corr plant-lat", cor(cell_sf_tidy$plant, cell_sf_tidy$lat)))
 print(paste("corr plant-year", cor(cell_sf_tidy$plant, cell_sf_tidy$year)))
 
-# model evaluation: see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
 
-nb <- poly2nb(cell_sf_tidy)
-#resnb <- sapply(nb, function(x) mean(cell_sf_tidy$residuals[x]))
-#plot(cell_sf_tidy$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
+plot(cell_sf_tidy$onset, cell_sf_tidy$residuals, main = "regular OLS, onset vs residual (exogeneity)")
+plot(cell_sf_tidy$lat, cell_sf_tidy$residuals, main = "regular OLS, latitude vs residual (exogeneity)")
+plot(cell_sf_tidy$year, cell_sf_tidy$residuals, main = "regular OLS, year vs residual (exogeneity)") 
+abline(h = 0)
+
+# multicollinearity: correlation between predictors
+predictors <- cell_sf_tidy[,c("lat", "onset", "year")]
+st_geometry(predictors) <- NULL
+print(cor(predictors))
+
+# model evaluation: see if basic OLS residuals are spatially autocorrelated with scatterplot -------------------------
+# do with only ONE year!
+to_autocorrelation <- cell_sf_tidy[cell_sf_tidy$year == year_oi & cell_sf_tidy$intensity == "DC", ]
+nb <- poly2nb(to_autocorrelation)
+#resnb <- sapply(nb, function(x) mean(to_autocorrelation$residuals[x]))
+#plot(to_autocorrelation$residuals, resnb, xlab='Residuals', ylab='Mean adjacent residuals', main = "Basic OLS, all years")
 lw <- nb2listw(nb, zero.policy = TRUE)
-moran_basic_ols <- moran.mc(cell_sf_tidy$residuals, lw, 999, zero.policy = TRUE)
-print('moran with basic ols, all years')
-print(moran_basic_ols)
+moran_basic_ols_residuals <- moran.mc(to_autocorrelation$residuals, lw, 999, zero.policy = TRUE)
+print('moran I of residuals with basic ols')
+print(moran_basic_ols_residuals)
+moran_basic_ols_onset <- moran.mc(to_autocorrelation$onset, lw, 999, zero.policy = TRUE)
+print('moran I of onset with basic ols')
+print(moran_basic_ols_onset)
+moran_basic_ols_plant <- moran.mc(to_autocorrelation$plant, lw, 999, zero.policy = TRUE)
+print('moran I of plant with basic ols')
+print(moran_basic_ols_plant)
 
 # # see if basic OLS residuals are temporally autocorrelated -----------------------------------------------------------
 # 
@@ -544,7 +565,7 @@ cell_DC_tempAuto <- cell_sf_tidy_DC_tmp %>%
 # cell_SC_tempAuto <- cell_sf_tidy_SC_tmp %>%
 #                       filter(dwi.autocorr.p.value < 0.05)
 # 
-plot_cell_tempAuto(year, cell_DC_tempAuto, "DC")
+plot_cell_tempAuto(year_oi, cell_DC_tempAuto, "DC")
 # plot_cell_tempAuto(year, cell_SC_tempAuto, "SC")
 
 # print map to show cell_ID, for plotting residual, onset and plant over time
