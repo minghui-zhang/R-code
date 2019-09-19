@@ -225,6 +225,125 @@ print(paste('percent total data used:', 100*nrow(cell_sf_tidy_year)/nrow(full_ye
 
 ```
 
+## evaluate predictions
+
+```{r}
+
+# runs the model with options to eliminate a year
+run_model <- function(full_data, year_to_train, year_to_elim, elim_year) {
+  
+  # separate training and test data
+  if (elim_year) {
+    train_data <- full_data[full_data$year == year_to_train,]
+    test_data <- full_data[full_data$year == year_to_elim,]
+  }
+  else {
+    train_data <- full_data
+    test_data <- full_data
+  }
+  
+
+  nb <- poly2nb(train_data)
+  lw <- nb2listw(nb, zero.policy = TRUE)
+  
+
+  model = lagsarlm(plant ~ onset + intensity + lat + onset:intensity, data=train_data, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+  model_intercept = lagsarlm(plant ~ 1, data=train_data, lw, tol.solve=1.0e-30,
+                     zero.policy = TRUE)
+  
+  print(paste('model done', 'train year', year_to_train, 'elim year', year_to_elim))
+  # extract onset coef and R2 from model
+  onset_coef <- model$coefficients['onset']
+  train_data$residuals <- residuals(model)
+  SST <- sum((train_data$plant - mean(train_data$plant))^2)
+  SSE <- sum((train_data$residuals - mean(train_data$residuals))^2)
+  R2 <- 1 - SSE/SST
+  
+  # prediction
+  nb <- poly2nb(test_data)
+  lw <- nb2listw(nb, zero.policy = TRUE)
+  prediction <- predict(model, test_data, lw)
+  error <- rmse(prediction, test_data$plant)
+  
+  prediction_intercept <- predict(model_intercept, test_data, lw)
+  error_intercept <- rmse(prediction_intercept, test_data$plant)
+  
+  diff_error <- error_intercept - error
+  
+  # output
+  output <- c(as.integer(year_to_elim), onset_coef, R2, error, diff_error)
+  names(output) <- c("eliminated_year", "onset", "R2", "RMSE", "RMSE_improvement")
+  return(output)
+}
+
+# to store the data
+prediction_rmse <- matrix(ncol = 11, nrow = 11)
+rownames(prediction_rmse) <- 2004:2014
+colnames(prediction_rmse) <- 2004:2014
+
+prediction_improvement_rmse <- matrix(ncol = 11, nrow = 11)
+rownames(prediction_improvement_rmse) <- 2004:2014
+colnames(prediction_improvement_rmse) <- 2004:2014
+
+prediction_r2 <- matrix(ncol = 11, nrow = 11)
+rownames(prediction_r2) <- 2004:2014
+colnames(prediction_r2) <- 2004:2014
+
+prediction_onset <- matrix(ncol = 11, nrow = 11)
+rownames(prediction_onset) <- 2004:2014
+colnames(prediction_onset) <- 2004:2014
+
+# year used in training is row. year used to test is column
+for (year_to_train in 2004:2014) {
+  for (year_to_elim in 2004:2014) {
+    result <- run_model(cell_sf_tidy, year_to_train, year_to_elim, TRUE)
+    rmse <- result['RMSE']
+    rmse_improvement <- result['RMSE_improvement']
+    R2 <- result['R2']
+    onset <- result['onset']
+    
+    prediction_rmse[toString(year_to_train), toString(year_to_elim)] <- rmse
+    prediction_improvement_rmse[toString(year_to_train), toString(year_to_elim)] <- rmse_improvement
+    prediction_r2[toString(year_to_train), toString(year_to_elim)] <- R2
+    prediction_onset[toString(year_to_train), toString(year_to_elim)] <- onset
+  }
+}
+
+# take out diagonals (when training and testing were the same)
+diag(prediction_rmse) <- NA
+diag(prediction_improvement_rmse) <- NA
+diag(prediction_r2) <- NA
+diag(prediction_onset) <- NA
+
+# summarize by test year
+rmse_results <- data.frame(eliminated_year = 2004:2014, RMSE= apply(prediction_rmse, 2, mean, na.rm = TRUE), sd = apply(prediction_rmse, 2, sd, na.rm = TRUE))
+rmse_improvement_results <- data.frame(eliminated_year = 2004:2014, RMSE_improvement= apply(prediction_improvement_rmse, 2, mean, na.rm = TRUE), sd = apply(prediction_improvement_rmse, 2, sd, na.rm = TRUE))
+r2_results <- data.frame(eliminated_year = 2004:2014, R2= apply(prediction_r2, 2, mean, na.rm = TRUE), sd = apply(prediction_r2, 2, sd, na.rm = TRUE))
+onset_results <- data.frame(eliminated_year = 2004:2014, onset= apply(prediction_onset, 2, mean, na.rm = TRUE), sd = apply(prediction_onset, 2, sd, na.rm = TRUE))
+
+
+plot(rmse_results$eliminated_year, rmse_results$RMSE, 
+     ylab = "RMSE", xlab = "eliminated year", ylim = c(5, 25), type = "l", main = "Prediction RMSE, Spatial lag")
+arrows(rmse_results$eliminated_year, rmse_results$RMSE-rmse_results$sd, 
+       rmse_results$eliminated_year, rmse_results$RMSE+rmse_results$sd, length=0.05, angle=90, code=3)
+
+plot(rmse_improvement_results$eliminated_year, rmse_improvement_results$RMSE_improvement, 
+     ylab = "RMSE", xlab = "eliminated year", ylim = c(0, 10), type = "l", main = "Prediction RMSE improvement over intercept, Spatial lag")
+arrows(rmse_improvement_results$eliminated_year, rmse_improvement_results$RMSE_improvement-rmse_improvement_results$sd, 
+       rmse_improvement_results$eliminated_year, rmse_improvement_results$RMSE_improvement+rmse_improvement_results$sd, length=0.05, angle=90, code=3)
+
+plot(onset_results$eliminated_year, onset_results$onset, type = "l", col = "red", ylab = "coef or R2", xlab = "eliminated year", ylim = c(0.1, 0.7), main = "Prediction onset and R2, Spatial lag")
+arrows(onset_results$eliminated_year, onset_results$onset-onset_results$sd, 
+       onset_results$eliminated_year, onset_results$onset+onset_results$sd, length=0.05, angle=90, code=3, col = "red")
+lines(r2_results$eliminated_year, r2_results$R2, col = "blue")
+arrows(r2_results$eliminated_year, r2_results$R2-r2_results$sd, 
+       r2_results$eliminated_year, r2_results$R2+r2_results$sd, length=0.05, angle=90, code=3, col = "blue")
+legend(2004, 0.65, legend = c("onset coef", "R2"), col = c("red", "blue"), lty= c(1,1))
+
+```
+
+
 ## spatial error, for one year
 
 ```{r}
