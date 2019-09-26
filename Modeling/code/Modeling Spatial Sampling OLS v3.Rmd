@@ -275,7 +275,7 @@ get_sampled_data <- function(full_data, grid_size, lat_offset, lon_offset, agg_s
 }
 
 # test output
-sampled_data <- get_sampled_data(cell_sf_tidy, grid_size = 1, lat_offset = 0.5, lon_offset = 0.5, agg_scheme = TRUE, plot_samples = TRUE, year_oi = 2005)
+#sampled_data <- get_sampled_data(cell_sf_tidy, grid_size = 1, lat_offset = 0.5, lon_offset = 0.5, agg_scheme = TRUE, plot_samples = TRUE, year_oi = 2005)
 ```
 
 ## functions to evaluate different sampling strategies and predictors
@@ -389,6 +389,7 @@ run_model_for_prediction_elimlocation <- function(full_data, formula, year_for_l
     return(prediction_results)
     
 }
+
 # runs the model with options to eliminate a year
 run_model_for_prediction_elimyear <- function(full_data, year_to_elim, elim_year, formula) {
   
@@ -426,7 +427,6 @@ run_model_for_prediction_elimyear <- function(full_data, year_to_elim, elim_year
   names(output) <- c("eliminated_year", "onset", "R2", "RMSE", "RMSE_improvement")
   return(output)
 }
-
 
 run_OLS <- function(full_data, predictors, y.var,
                     grid_size, lat_offset, lon_offset, agg_scheme, 
@@ -499,9 +499,9 @@ run_OLS <- function(full_data, predictors, y.var,
   lw <- nb2listw(nb, zero.policy = TRUE)
   
   # calculate spatial autocorrelation
-  moran_residual <- moran.mc(to_autocorrelation_points$residuals, lw, 999, zero.policy = TRUE)
-  moran_onset <- moran.mc(to_autocorrelation_points$onset, lw, 999, zero.policy = TRUE)
-  moran_plant <- moran.mc(to_autocorrelation_points$plant, lw, 999, zero.policy = TRUE)
+  moran_residual <- moran.mc(to_autocorrelation_points$residuals, lw, 500, zero.policy = TRUE)
+  moran_onset <- moran.mc(to_autocorrelation_points$onset, lw, 500, zero.policy = TRUE)
+  moran_plant <- moran.mc(to_autocorrelation_points$plant, lw, 500, zero.policy = TRUE)
   
   residual_moran <- moran_residual$statistic
   residual_moran_pval <- moran_residual$p.value
@@ -612,72 +612,194 @@ print(model_output)
 
 results <- data.frame()
 
-for (grid_size in seq(0.5, 1.5, 0.25)) {
-  
+for (grid_size in seq(0.5, 1.5, 0.25)) { # 0.25 to 1.75
   for (agg_scheme in c(TRUE, FALSE)) {
-    model_output <- run_OLS(full_data = cell_sf_tidy, 
-                          predictors = c("onset", "intensity",
-                            "lat", "lon", # for spatial effects
-                            "year_index", # for time effects
-                            "onset:intensity" # interactions: for intensity effects
-                            ), 
-                      y.var = "plant",
-                      grid_size = grid_size, lat_offset = 0, lon_offset = 0, agg_scheme = TRUE, 
-                      plot_samples = FALSE, plot_model_evals = FALSE, 
-                      year_oi = 2005)
+    for (lat_offset in seq(0, 1.5, by = 0.25)) { # 0 to 1.5
+      for (lon_offset in seq(0, 1.5, by = 0.25)) { # 0 to 1.5
+        
+        model_output <- run_OLS(full_data = cell_sf_tidy, 
+                              predictors = c("onset", "intensity",
+                                "lat", "lon", # for spatial effects
+                                "year_index", # for time effects
+                                "onset:intensity" # interactions: for intensity effects
+                                ), 
+                          y.var = "plant",
+                          grid_size = grid_size, 
+                          lat_offset = lat_offset, lon_offset = lon_offset, agg_scheme = agg_scheme, 
+                          plot_samples = FALSE, plot_model_evals = FALSE, 
+                          year_oi = 2005)
+        
+        #if (agg_scheme) {agg_scheme_str <- "Agg"}
+        #else {agg_scheme_str <- "NotAgg"}
+        
+        print(paste("grid size", grid_size))
+        print(paste("agg scheme", agg_scheme))
     
-    if (agg_scheme) {agg_scheme_str <- "Agg"}
-    else {agg_scheme_str <- "NotAgg"}
-    selected_output <- c(grid_size, agg_scheme_str, 
-                         model_output$onset_coef, model_output$intensity_coef, model_output$lat_coef,
-                         model_output$R2, model_output$percent_data_used, 
-                         model_output$residual_moran_pval, model_output$onset_moran_pval, 
-                         model_output$plant_moran_pval,
-                         mean(model_output$prediction_results_elimyear$RMSE, na.rm = TRUE), 
-                         mean(model_output$prediction_results_elimlocation$RMSE, na.rm = TRUE)
-                         )
-    
-    results <- rbind(results, selected_output)
+        selected_output <- as.numeric(c(grid_size, agg_scheme, lat_offset, lon_offset,
+                             model_output$onset_coef, model_output$intensity_coef, model_output$lat_coef,
+                             model_output$R2, model_output$percent_data_used, 
+                             model_output$residual_moran_pval, model_output$onset_moran_pval, 
+                             model_output$plant_moran_pval,
+                             mean(model_output$prediction_results_elimyear$RMSE, na.rm = TRUE), 
+                             mean(model_output$prediction_results_elimlocation$RMSE, na.rm = TRUE)
+                             ))
+        
+        print(selected_output)
+        results <- rbind(results, selected_output)
+      }
+    }
   }
 }
 
-names(results) <- c("grid_size", "agg_scheme", "onset_coef", "intensity_coef", "lat_coef",
+names(results) <- c("grid_size", "agg_scheme", "lat_offset", "lon_offset",
+                    "onset_coef", "intensity_coef", "lat_coef",
                     "R2", "percent_used", "residual_moran_pval", "onset_moran_pval",
                     "plant_moran_pval",
                     "mean_RMSE_elimyear", "mean_RMSE_elimlocation")
+results$agg_scheme <- as.factor(results$agg_scheme)
+
+# SAVED RESULTS
+saveRDS(results, "spatial_sampling_results.rds")
+
+# calculate mean and sd for each grid size x agg scheme, for different grid offsets
+results_summary <- results %>%
+                        group_by(grid_size, agg_scheme) %>%
+                        summarize(
+                          onset_coef_mean = mean(onset_coef),
+                          onset_coef_sd = sd(onset_coef),
+                          intensity_coef_mean = mean(intensity_coef),
+                          intensity_coef_sd = sd(intensity_coef),
+                          lat_coef_mean = mean(lat_coef),
+                          lat_coef_sd = sd(lat_coef),
+                          R2_mean = mean(R2),
+                          R2_sd = sd(R2),
+                          percent_used_mean = mean(percent_used),
+                          percent_used_sd = sd(percent_used),
+                          residual_moran_pval_mean = mean(residual_moran_pval),
+                          residual_moran_pval_sd = sd(residual_moran_pval),
+                          onset_moran_pval_mean = mean(onset_moran_pval),
+                          onset_moran_pval_sd = sd(onset_moran_pval),
+                          plant_moran_pval_mean = mean(plant_moran_pval),
+                          plant_moran_pval_sd = sd(plant_moran_pval),
+                          RMSE_elimyear_mean = mean(mean_RMSE_elimyear),
+                          RMSE_elimyear_sd = sd(mean_RMSE_elimyear),
+                          RMSE_elimlocation_mean = mean(mean_RMSE_elimlocation),
+                          RMSE_elimlocation_sd = sd(mean_RMSE_elimlocation)
+                        )
 
 # compare grid sizes and aggregation schemes
 
-onset_plot <- ggplot(results, aes(x = grid_size, y = onset_coef, col = agg_scheme)) +
-  geom_line() +
-  ggtitle("onset coefficient") +
-  xlab("grid size") +
-  ylab("onset coef") +
-  theme_bw()
+plot_results <- function(data, x_data, y_data, x_label, y_label, col_data) {
+  ggplot(data, aes(x = x_data, y = y_data, col = col_data)) +
+    geom_line() +
+    ggtitle(y_label) +
+    xlab(x_label) +
+    ylab(y_label)+
+    labs(col = "Aggregation scheme") +
+    theme_bw()
+}
 
-R2_plot <- ggplot(results, aes(x = grid_size, y = R2, col = agg_scheme)) +
-  geom_line() +
-  ggtitle("R2") +
-  xlab("grid size") +
-  ylab("R2")+
-  theme_bw()
+plot_results_summary <- function(data, x_data, y_data, y_sd, x_label, y_label, col_data) {
+  ggplot(data, aes(x = x_data, y = y_data, col = col_data)) +
+    geom_line() +
+    geom_errorbar(aes(ymin=y_data-y_sd, ymax=y_data+y_sd), position=position_dodge(0.05)) +
+    ggtitle(y_label) +
+    xlab(x_label) +
+    ylab(y_label)+
+    labs(col = "Aggregation scheme") +
+    theme_bw()
+}
 
-RMSE_elimyear_plot <- ggplot(results, aes(x = grid_size, y = mean_RMSE_elimyear, col = agg_scheme)) +
-  geom_line() +
-  ggtitle("mean prediction RMSE when eliminating a year") +
-  xlab("grid size") +
-  ylab("mean prediction RMSE when eliminating a year")+
-  theme_bw()
+# plot results, summarizing for different grid offsets
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$onset_coef_mean,
+                     y_sd = results_summary$onset_coef_sd,
+                    x_label = "grid_size", y_label = "onset coefficient", 
+                    col_data = results_summary$agg_scheme)
 
-RMSE_elimlocation_plot <- ggplot(results, aes(x = grid_size, y = mean_RMSE_elimlocation, col = agg_scheme)) +
-  geom_line() +
-  ggtitle("mean prediction RMSE when eliminating a location") +
-  xlab("grid size") +
-  ylab("mean prediction RMSE when eliminating a location")+
-  theme_bw()
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$intensity_coef_mean,
+                     y_sd = results_summary$intensity_coef_sd,
+                    x_label = "grid_size", y_label = "intensity coefficient", 
+                    col_data = results_summary$agg_scheme)
 
-print(onset_plot)
-print(R2_plot)
-print(RMSE_elimyear_plot)
-print(RMSE_elimlocation_plot)
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$lat_coef_mean,
+                     y_sd = results_summary$lat_coef_sd,
+                    x_label = "grid_size", y_label = "latitude coefficient", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$R2_mean,
+                     y_sd = results_summary$R2_sd,
+                    x_label = "grid_size", y_label = "R2", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$percent_used_mean,
+                     y_sd = results_summary$percent_used_sd,
+                    x_label = "grid_size", y_label = "percent used", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$residual_moran_pval_mean,
+                     y_sd = results_summary$residual_moran_pval_sd,
+                    x_label = "grid_size", y_label = "residual moran's I p value", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$onset_moran_pval_mean,
+                     y_sd = results_summary$onset_moran_pval_sd,
+                    x_label = "grid_size", y_label = "onset moran's I p value", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$plant_moran_pval_mean,
+                     y_sd = results_summary$plant_moran_pval_sd,
+                    x_label = "grid_size", y_label = "plant moran's I p value", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$RMSE_elimlocation_mean,
+                     y_sd = results_summary$RMSE_elimlocation_sd,
+                    x_label = "grid_size", y_label = "RMSE from eliminating location", 
+                    col_data = results_summary$agg_scheme)
+
+plot_results_summary(data = results_summary, 
+                     x_data = results_summary$grid_size, y_data = results_summary$RMSE_elimyear_mean,
+                     y_sd = results_summary$RMSE_elimyear_sd,
+                    x_label = "grid_size", y_label = "RMSE from eliminating year", 
+                    col_data = results_summary$agg_scheme)
+
+# plot results for a single grid offset
+# plot_results(results, results$grid_size, results$onset_coef, 
+#              "grid_size", "onset coefficient", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$intensity_coef, 
+#              "grid_size", "intensitySC coefficient", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$lat_coef, 
+#              "grid_size", "latitude coefficient", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$R2, 
+#              "grid_size", "R2", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$percent_used, 
+#              "grid_size", "percent used", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$residual_moran_pval, 
+#              "grid_size", "p value of residual autocorrelation", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$onset_moran_pval, 
+#              "grid_size", "p value of onset autocorrelation", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$plant_moran_pval, 
+#              "grid_size", "p value of plant autocorrelation", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$mean_RMSE_elimyear, 
+#              "grid_size", "mean prediction RMSE when eliminating a year", results$agg_scheme)
+# 
+# plot_results(results, results$grid_size, results$mean_RMSE_elimlocation, 
+#              "grid_size", "mean prediction RMSE when eliminating a location", results$agg_scheme)
+
 ```
