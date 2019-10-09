@@ -224,6 +224,18 @@ categorize_vars_cell_tidy <- function(cell_tidy) {
   return(cell_tidy)
 }
 
+categorize_regions_cell_sf_tidy <- function(cell_tidy) {
+  
+  regions <- character(length = length(cell_tidy$lat))
+  regions[cell_tidy$lat < -15] <- "south"
+  regions[cell_tidy$lat >= -15 & cell_tidy$lon < -56.5] <- "west"
+  regions[cell_tidy$lat >= -15 & cell_tidy$lon >= -56.5 & cell_tidy$lon < -53.2] <- "central"
+  regions[cell_tidy$lat >= -15 & cell_tidy$lon >= -53.2] <- "east"
+  cell_tidy$region <- regions
+  
+  return(cell_tidy)
+}
+
 categorize_vars_cell_untidy <- function(median_cell) {
   cell_onset_cutoffs = quantile(median_cell$onset, c(0,1/3,2/3,1), na.rm = TRUE)
   cell_onset_cutoffs[1] = cell_onset_cutoffs[1]-1

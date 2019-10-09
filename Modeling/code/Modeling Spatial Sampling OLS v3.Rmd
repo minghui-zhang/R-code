@@ -133,7 +133,10 @@ cell_sf$cell_ID <- sapply(as.character(cell_sf$cell_ID), clean_cell_ID)
 
 cell_sf_tidy <- cell_sf %>% tidy_by_intensity_plant("SC_plant", "DC_plant") %>%
             #tidy_by_intensity_delay("SC_delay", "DC_delay") %>%
-            dplyr::select(-c(SC_harvest, DC_harvest))
+            dplyr::select(-c(SC_harvest, DC_harvest)) %>%
+            categorize_regions_cell_sf_tidy() # categorize cells into four regions
+
+
 cell_sf_tidy$year_index <- cell_sf_tidy$year - 2003
 cell_sf_tidy$year_factor <- as.factor(cell_sf_tidy$year)
 
@@ -302,15 +305,15 @@ run_model_for_prediction_elimlocation <- function(full_data, formula, year_for_l
     centroids <- coordinates(test_location_sp)
     test_location_point <- SpatialPointsDataFrame(coords = centroids, data = test_location_sf)
     test_location_sf <- st_as_sf(test_location_point)
-    st_crs(test_location_sf) <- st_crs(sampled_data)
+    st_crs(test_location_sf) <- st_crs(full_data)
     
     # get test data for all years
-    test_sgbp = st_intersects(x = sampled_data, y = test_location_sf)
+    test_sgbp = st_intersects(x = full_data, y = test_location_sf)
     test_logical = lengths(test_sgbp) > 0
-    test_data = sampled_data[test_logical, ]
+    test_data = full_data[test_logical, ]
     
     # get train data for all years 
-    train_data <- sampled_data[test_location_sf, , op = st_disjoint]
+    train_data <- full_data[test_location_sf, , op = st_disjoint]
     
     model = lm(formula, data=train_data) 
     model_intercept = lm(plant ~ 1, data=train_data)
@@ -430,12 +433,13 @@ run_model_for_prediction_elimyear <- function(full_data, year_to_elim, elim_year
 
 run_OLS <- function(full_data, predictors, y.var,
                     grid_size, lat_offset, lon_offset, agg_scheme, 
-                    plot_samples, plot_model_evals, year_oi) {
+                    plot_samples, plot_model_evals, year_oi, do_elim_year) {
   
   # get sampled data
   sampled_data <- get_sampled_data(full_data = cell_sf_tidy, grid_size = grid_size, 
                                    lat_offset = lat_offset, lon_offset = lon_offset, agg_scheme = agg_scheme, 
                                    plot_samples = plot_samples, year_oi = year_oi)
+  
   
   # map of the input data used (for specific year and intensity)
   if (plot_samples) {
@@ -463,12 +467,12 @@ run_OLS <- function(full_data, predictors, y.var,
   coefficients <- model$coefficients
   onset_coef <- coefficients["onset"]
   intensity_coef <- coefficients["intensitySC"]
-  lat_coef <- coefficients["lat"]
+  #lat_coef <- coefficients["lat"]
   
   p_vals <- summary(model)$coefficients[, ncol(summary(model)$coefficients)]
   onset_pval <- p_vals["onset"]
   intensity_pval <- p_vals["intensitySC"]
-  lat_pval <- p_vals["lat"]
+  #lat_pval <- p_vals["lat"]
   
   # 2. percent data used
   percent_data_used <- 100*nrow(sampled_data)/nrow(full_data)
@@ -481,9 +485,9 @@ run_OLS <- function(full_data, predictors, y.var,
   # 4. exogeneity plots (residual vs predictors)
   if (plot_model_evals) {
     plot(sampled_data$onset, sampled_data$residuals, main = "onset vs residual (exogeneity)")
-    plot(sampled_data$lat, sampled_data$residuals, main = "latitude vs residual (exogeneity)")
+    #plot(sampled_data$lat, sampled_data$residuals, main = "latitude vs residual (exogeneity)")
 
-    plot(sampled_data$year, sampled_data$residuals, main = "latitude vs residual (exogeneity)") 
+    plot(sampled_data$year, sampled_data$residuals, main = "year vs residual (exogeneity)") 
     abline(h = 0)
   }
   
@@ -522,53 +526,57 @@ run_OLS <- function(full_data, predictors, y.var,
   }
   
   # 7. multicollinearity: look at max absolute correlation between predictors
-  predictors <- sampled_data[,c("lat", "onset", "year")]
+  predictors <- sampled_data[,c("onset", "year")]
   st_geometry(predictors) <- NULL
   correlations <- cor(predictors)
   diag(correlations) <- 0 # place 1 with 0 on diagonal
   highest_predictor_correlation <- max(abs(correlations))
 
+  
   # 8. predictive ability, when eliminate one year
   
-  prediction_results_elimyear <- data.frame()
-
-  for (year in 2004:2014) {
-    
-    result <- run_model_for_prediction_elimyear(sampled_data, year, TRUE, f)
-    prediction_results_elimyear <- rbind(prediction_results_elimyear, result)
-  }
+  if (do_elim_year) { # set do_elim_year to FALSE if using year as fixed effect
+    prediction_results_elimyear <- data.frame()
   
-  names(prediction_results_elimyear) <- names(result)
-  
-  if (plot_model_evals) {
-    plot(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$RMSE, 
-         ylab = "RMSE", xlab = "eliminated year", ylim = c(5, 25), type = "l", 
-         main = "Prediction RMSE, spatial sampling")
+    for (year in 2004:2014) {
+      
+      result <- run_model_for_prediction_elimyear(sampled_data, year, TRUE, f)
+      prediction_results_elimyear <- rbind(prediction_results_elimyear, result)
+    }
     
-    plot(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$RMSE_improvement, 
-         ylab = "RMSE", xlab = "eliminated year", ylim = c(0, 10), type = "l", 
-         main = "Prediction RMSE improvement over intercept, spatial sampling")
+    names(prediction_results_elimyear) <- names(result)
     
-    plot(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$onset, type = "l", col = "red", 
-         ylab = "coef or R2", xlab = "eliminated year", ylim = c(0.1, 0.7), 
-         main = "Prediction onset and R2, spatial sampling")
-    lines(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$R2, col = "blue")
-    legend(2004, 0.65, legend = c("onset coef", "R2"), col = c("red", "blue"), lty= c(1,1))
+    if (plot_model_evals) {
+      plot(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$RMSE, 
+           ylab = "RMSE", xlab = "eliminated year", ylim = c(5, 25), type = "l", 
+           main = "Prediction RMSE, spatial sampling")
+      
+      plot(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$RMSE_improvement, 
+           ylab = "RMSE", xlab = "eliminated year", ylim = c(0, 10), type = "l", 
+           main = "Prediction RMSE improvement over intercept, spatial sampling")
+      
+      plot(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$onset, type = "l", col = "red", 
+           ylab = "coef or R2", xlab = "eliminated year", ylim = c(0.1, 0.7), 
+           main = "Prediction onset and R2, spatial sampling")
+      lines(prediction_results_elimyear$eliminated_year, prediction_results_elimyear$R2, col = "blue")
+      legend(2004, 0.65, legend = c("onset coef", "R2"), col = c("red", "blue"), lty= c(1,1))
+    }
   }
   
   # 9. predictive ability, location cross validation
   
-  prediction_results_elimlocation <- run_model_for_prediction_elimlocation(full_data = sampled_data, 
-                                      formula = f, 
+  prediction_results_elimlocation <- run_model_for_prediction_elimlocation(full_data = sampled_data,
+                                      formula = f,
                                       year_for_location = 2004, year_oi = 2011,
                                       plot_model_evals = plot_model_evals)
   
-  output_list <- list(onset_coef = onset_coef, 
+  if (do_elim_year) {
+    output_list <- list(onset_coef = onset_coef, 
                       intensity_coef = intensity_coef,
-                      lat_coef = lat_coef,
+                      #lat_coef = lat_coef,
                       onset_pval = onset_pval,
                       intensity_pval = intensity_pval,
-                      lat_pval = lat_pval,
+                      #lat_pval = lat_pval,
                       percent_data_used = percent_data_used,
                       R2 = R2,
                       residual_moran = residual_moran,
@@ -579,8 +587,29 @@ run_OLS <- function(full_data, predictors, y.var,
                       plant_moran_pval = plant_moran_pval,
                       highest_predictor_correlation = highest_predictor_correlation,
                       prediction_results_elimyear = prediction_results_elimyear,
-                      prediction_results_elimlocation = prediction_results_elimlocation)
+                      prediction_results_elimlocation = prediction_results_elimlocation
+                      )
+  }
   
+  if (!do_elim_year) {
+    output_list <- list(onset_coef = onset_coef, 
+                      intensity_coef = intensity_coef,
+                      #lat_coef = lat_coef,
+                      onset_pval = onset_pval,
+                      intensity_pval = intensity_pval,
+                      #lat_pval = lat_pval,
+                      percent_data_used = percent_data_used,
+                      R2 = R2,
+                      residual_moran = residual_moran,
+                      residual_moran_pval = residual_moran_pval,
+                      onset_moran = onset_moran,
+                      onset_moran_pval = onset_moran_pval,
+                      plant_moran = plant_moran,
+                      plant_moran_pval = plant_moran_pval,
+                      highest_predictor_correlation = highest_predictor_correlation,
+                      prediction_results_elimlocation = prediction_results_elimlocation
+                      )
+  }
 
   return(output_list)
 }
@@ -597,7 +626,7 @@ model_output <- run_OLS(full_data = cell_sf_tidy,
                     y.var = "plant",
                     grid_size = 1, lat_offset = 0.5, lon_offset = 0.5, agg_scheme = TRUE, 
                     plot_samples = TRUE, plot_model_evals = TRUE, 
-                    year_oi = 2005)
+                    year_oi = 2005, do_elim_year = TRUE)
 
 print(model_output)
 
@@ -610,16 +639,18 @@ print(model_output)
 
 # test different grid sizes and aggregation strategies. don't do any offset
 
+do_elim_year = TRUE # TOGGLE TRUE IF USE YEAR AS TREND, FALSE IF USE YEAR AS FIXED EFFECT
+
 results <- data.frame()
 
-for (grid_size in seq(0.5, 1.5, 0.25)) { # 0.25 to 1.75
-  for (agg_scheme in c(TRUE, FALSE)) {
+for (grid_size in c(0.75)) { # 0.25 to 1.75, seq(0.75, 1.25, 0.25)
+  for (agg_scheme in c(FALSE)) {
     for (lat_offset in seq(0, 1.5, by = 0.25)) { # 0 to 1.5
       for (lon_offset in seq(0, 1.5, by = 0.25)) { # 0 to 1.5
         
         model_output <- run_OLS(full_data = cell_sf_tidy, 
                               predictors = c("onset", "intensity",
-                                "lat", "lon", # for spatial effects
+                                "lon", "lat", # for spatial effects: lat, lon, Muni_code
                                 "year_index", # for time effects
                                 "onset:intensity" # interactions: for intensity effects
                                 ), 
@@ -627,7 +658,8 @@ for (grid_size in seq(0.5, 1.5, 0.25)) { # 0.25 to 1.75
                           grid_size = grid_size, 
                           lat_offset = lat_offset, lon_offset = lon_offset, agg_scheme = agg_scheme, 
                           plot_samples = FALSE, plot_model_evals = FALSE, 
-                          year_oi = 2005)
+                          year_oi = 2005,
+                          do_elim_year = do_elim_year)
         
         #if (agg_scheme) {agg_scheme_str <- "Agg"}
         #else {agg_scheme_str <- "NotAgg"}
@@ -636,13 +668,17 @@ for (grid_size in seq(0.5, 1.5, 0.25)) { # 0.25 to 1.75
         print(paste("agg scheme", agg_scheme))
     
         selected_output <- as.numeric(c(grid_size, agg_scheme, lat_offset, lon_offset,
-                             model_output$onset_coef, model_output$intensity_coef, model_output$lat_coef,
+                             model_output$onset_coef, model_output$intensity_coef, #model_output$lat_coef,
                              model_output$R2, model_output$percent_data_used, 
                              model_output$residual_moran_pval, model_output$onset_moran_pval, 
                              model_output$plant_moran_pval,
-                             mean(model_output$prediction_results_elimyear$RMSE, na.rm = TRUE), 
+                             #mean(model_output$prediction_results_elimyear$RMSE, na.rm = TRUE), 
                              mean(model_output$prediction_results_elimlocation$RMSE, na.rm = TRUE)
                              ))
+        
+        if (do_elim_year) {
+          selected_output <- c(selected_output, mean(model_output$prediction_results_elimyear$RMSE, na.rm = TRUE))
+        }
         
         print(selected_output)
         results <- rbind(results, selected_output)
@@ -651,11 +687,21 @@ for (grid_size in seq(0.5, 1.5, 0.25)) { # 0.25 to 1.75
   }
 }
 
-names(results) <- c("grid_size", "agg_scheme", "lat_offset", "lon_offset",
-                    "onset_coef", "intensity_coef", "lat_coef",
+if (do_elim_year) {
+  names(results) <- c("grid_size", "agg_scheme", "lat_offset", "lon_offset",
+                    "onset_coef", "intensity_coef", #"lat_coef",
                     "R2", "percent_used", "residual_moran_pval", "onset_moran_pval",
                     "plant_moran_pval",
-                    "mean_RMSE_elimyear", "mean_RMSE_elimlocation")
+                    "mean_RMSE_elimlocation", "mean_RMSE_elimyear")
+}
+if (!do_elim_year) {
+  names(results) <- c("grid_size", "agg_scheme", "lat_offset", "lon_offset",
+                    "onset_coef", "intensity_coef", #"lat_coef",
+                    "R2", "percent_used", "residual_moran_pval", "onset_moran_pval",
+                    "plant_moran_pval",
+                    "mean_RMSE_elimlocation")
+}
+
 results$agg_scheme <- as.factor(results$agg_scheme)
 
 # SAVED RESULTS
@@ -669,8 +715,8 @@ results_summary <- results %>%
                           onset_coef_sd = sd(onset_coef),
                           intensity_coef_mean = mean(intensity_coef),
                           intensity_coef_sd = sd(intensity_coef),
-                          lat_coef_mean = mean(lat_coef),
-                          lat_coef_sd = sd(lat_coef),
+                          #lat_coef_mean = mean(lat_coef),
+                          #lat_coef_sd = sd(lat_coef),
                           R2_mean = mean(R2),
                           R2_sd = sd(R2),
                           percent_used_mean = mean(percent_used),
@@ -681,11 +727,22 @@ results_summary <- results %>%
                           onset_moran_pval_sd = sd(onset_moran_pval),
                           plant_moran_pval_mean = mean(plant_moran_pval),
                           plant_moran_pval_sd = sd(plant_moran_pval),
-                          RMSE_elimyear_mean = mean(mean_RMSE_elimyear),
-                          RMSE_elimyear_sd = sd(mean_RMSE_elimyear),
+                          #RMSE_elimyear_mean = mean(mean_RMSE_elimyear), # TURN OFF IF USE YEAR AS FACTOR
+                          #RMSE_elimyear_sd = sd(mean_RMSE_elimyear), # TURN OFF IF USE YEAR AS FACTOR
                           RMSE_elimlocation_mean = mean(mean_RMSE_elimlocation),
                           RMSE_elimlocation_sd = sd(mean_RMSE_elimlocation)
                         )
+
+if (do_elim_year) {
+  elim_year_summary <- results %>%
+    group_by(grid_size, agg_scheme) %>%
+    summarize(
+      RMSE_elimyear_mean = mean(mean_RMSE_elimyear),
+      RMSE_elimyear_sd = sd(mean_RMSE_elimyear) 
+    )
+  
+  results_summary <- cbind(results_summary, elim_year_summary)
+}
 
 # compare grid sizes and aggregation schemes
 
@@ -724,12 +781,6 @@ plot_results_summary(data = results_summary,
                     col_data = results_summary$agg_scheme)
 
 plot_results_summary(data = results_summary, 
-                     x_data = results_summary$grid_size, y_data = results_summary$lat_coef_mean,
-                     y_sd = results_summary$lat_coef_sd,
-                    x_label = "grid_size", y_label = "latitude coefficient", 
-                    col_data = results_summary$agg_scheme)
-
-plot_results_summary(data = results_summary, 
                      x_data = results_summary$grid_size, y_data = results_summary$R2_mean,
                      y_sd = results_summary$R2_sd,
                     x_label = "grid_size", y_label = "R2", 
@@ -765,11 +816,13 @@ plot_results_summary(data = results_summary,
                     x_label = "grid_size", y_label = "RMSE from eliminating location", 
                     col_data = results_summary$agg_scheme)
 
-plot_results_summary(data = results_summary, 
-                     x_data = results_summary$grid_size, y_data = results_summary$RMSE_elimyear_mean,
-                     y_sd = results_summary$RMSE_elimyear_sd,
-                    x_label = "grid_size", y_label = "RMSE from eliminating year", 
-                    col_data = results_summary$agg_scheme)
+if (do_elim_year) {
+  plot_results_summary(data = results_summary, 
+                       x_data = results_summary$grid_size, y_data = results_summary$RMSE_elimyear_mean,
+                       y_sd = results_summary$RMSE_elimyear_sd,
+                      x_label = "grid_size", y_label = "RMSE from eliminating year", 
+                      col_data = results_summary$agg_scheme)
+}
 
 # plot results for a single grid offset
 # plot_results(results, results$grid_size, results$onset_coef, 
