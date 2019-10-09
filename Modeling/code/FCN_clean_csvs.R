@@ -1,3 +1,8 @@
+# add cell_ID
+clean_cell_ID <- function(cell_ID) {
+  strsplit(cell_ID, "_")[[1]][2]
+}
+
 delete_cols_median_cell <- function(median_cell_raw) {
   output = subset(median_cell_raw, select = -c(double_area_km2_median, 
                                                double_delay_sum, double_harvest_sum, double_plant_sum,
