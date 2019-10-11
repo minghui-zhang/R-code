@@ -59,7 +59,29 @@ rename_cols_median_muni <- function(median_muni_raw) {
   return(output)
 }
 
-
+rename_cols_percentile_cell <- function(percentile_cell) {
+  output = percentile_cell %>% 
+    rename(
+      cell_ID = system.index,
+      DC_area_km = double_area_km2,
+      DC_delay = double_delay,
+      DC_harvest = double_harvest,
+      DC_plant = double_plant,
+      lat = latitude,
+      lon = longitude,
+      onset_rang = onset_historicalRange,
+      onset = onset,
+      SC_area_km = single_area_km2,
+      SC_delay = single_delay,
+      SC_harvest = single_harvest,
+      SC_plant = single_plant,
+      soy_area_k = total_planted_area_km2,
+      Muni_code = Muni_code,
+      year = year
+    ) %>%
+    filter(year > 0)
+  return(output)
+}
 
 tidy_by_intensity_plant <- function(data, SC_name, DC_name) {
   output = data %>%

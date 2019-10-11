@@ -1,6 +1,7 @@
-get_sampled_data <- function(full_data, grid_size, lat_offset, lon_offset, agg_scheme, plot_samples, year_oi) {
+get_sampled_data <- function(full_data, plant_stat, grid_size, lat_offset, lon_offset, agg_scheme, plot_samples, year_oi) {
   # agg_scheme is FALSE for using only individual cells at grid point locations, TRUE for aggregating to grid polygons by mean cell values. plot_samples is TRUE or FALSE, for showing where samples were taken for SC and DC for a given year_oi. year_oi is only for plotting purposes
   
+  full_data <- full_data[full_data$plant_stat_type == plant_stat, ]
   # order cells so the slowest-changing row is cell_ID
   full_data <- full_data[order(full_data$cell_ID) , ]
   full_data$index <- 1:nrow(full_data) #unique row index to join later

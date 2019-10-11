@@ -124,6 +124,7 @@ run_model_for_prediction_elimlocation <- function(full_data, formula, year_for_l
 # runs the model with options to eliminate a year
 run_model_for_prediction_elimyear <- function(full_data, year_to_elim, elim_year, formula) {
   
+  
   # separate training and test data
   if (elim_year) {
     train_data <- full_data[full_data$year != year_to_elim,]
