@@ -719,3 +719,13 @@ if (do_elim_year) {
 }
 
 ```
+
+## export
+
+```{r}
+# for app.R
+cell_sf_tidy <- cell_sf_tidy %>%  drop_na %>%
+                              mutate(year_factor = as.factor(year))
+saveRDS(as(cell_sf_tidy, 'Spatial'), "./cell_spdf.rds")
+
+```

@@ -5,10 +5,21 @@ library(rgdal)
 library(raster)
 library(leafpop)
 library(ggplot2)
+library(spatialEco)
 
 # TUTORIAL: https://rstudio.github.io/leaflet/shiny.html
 
+# Note, the interactive graphs generated as all_grpahs_list take a long time to load and can't get different ones to show up
+# gave up on this, it uses mapview instead of leaflet: https://stackoverflow.com/questions/32352539/plotting-barchart-in-popup-using-leaflet-library
+
 df <- readRDS("./cell_spdf.rds")
+df <- df[df$plant_stat_type == "median", ] # show median planting date only
+
+# TEST: filter stuff out
+#df <- df[df$intensity == "SC" &  df$year == 2010,]
+
+#all_graphs_list <- readRDS("./all_graphs_list.rds")
+
 MT_outline <- readOGR(dsn = './MatoGrossoOutline', layer = 'MatoGrossoOutline')
 crs(MT_outline) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 
@@ -28,6 +39,10 @@ vars <- c(
   "2004" = 2004
 )
 
+###################################################################################################
+# UI
+###################################################################################################
+
 ui <- navbarPage("Crop Timing", id = "nav",
            
   # map tab -------------------------------------------------------------------------------------      
@@ -40,20 +55,67 @@ ui <- navbarPage("Crop Timing", id = "nav",
                                c("Single Cropping" = "SC",
                                  "Double Cropping" = "DC")),
                   
-      selectInput("user_year", "Year:", vars)
+      #selectInput("user_year", "Year:", vars)
+      sliderInput(inputId = "user_year", 
+                    label = "Year",
+                    value = 2010, min = 2004, max = 2014, 
+      	            step = 1, round = TRUE, sep = '', ticks = FALSE),
+      
+      h6("Click a cell to view its planting and wet season onset trajectory."),
+      plotOutput("timeseries"),
+      plotOutput("histogram_SC"),
+      plotOutput("histogram_DC"),
+
+      width = 6
+      
+      
       ),
     
     # main bar
     mainPanel(
-      leafletOutput("mymap",height = 1000)
+      leafletOutput("mymap",height = 1000),
+      width = 6
     )
     
     ) # end sidebarLayout
   ), # end interactive map tab
   
   # how data created tab -----------------------------------------------------------------------
-  tabPanel("How this data was created")
+  tabPanel("About this data")
 )
+
+###################################################################################################
+# CALCULATIONS
+###################################################################################################
+
+# save a list of plots per cell (using all data, df)
+# create_graph <- function(df_row) {
+#   
+#   
+#   cell_ID_value <- df_row["cell_ID"]
+#   
+#   #print('generating graph for cell')
+#   #print(cell_ID_value)
+#   
+#   # get all years corresponding to this cell
+#   cell_df <- as.data.frame(df)[as.data.frame(df)$cell_ID == cell_ID_value,]
+#    
+#   return(
+#       ggplot(cell_df, aes(x = year, y = plant, col = intensity)) +
+#                            geom_point(size = 1) +
+#                            geom_line(aes(x = year, y = onset), col = "blue") +
+#                            theme_bw()
+#      )
+# }
+
+# run this once for every time create_graph changes, then read in teh result
+#all_graphs_list <- apply(as.data.frame(df), MARGIN = 1, FUN = create_graph)
+#saveRDS(all_graphs_list, file = "all_graphs_list.rds")
+#df$graph <- all_graphs_list
+
+###################################################################################################
+# SERVER
+###################################################################################################
 
 server <- function(input, output) {
   
@@ -63,9 +125,15 @@ server <- function(input, output) {
   
   filteredData_allYears <- reactive({
     df[df$intensity == input$user_intensity,]
-
   })
   
+  filteredData_SC_userYear <- reactive({
+    df[df$intensity == "SC" & df$year == input$user_year,]
+  })
+  
+  filteredData_DC_userYear <- reactive({
+    df[df$intensity == "DC" & df$year == input$user_year,]
+  })
 
   pal <- colorNumeric(
     palette = "YlOrRd",
@@ -80,36 +148,94 @@ server <- function(input, output) {
       addPolygons(data = MT_outline, weight = 2, stroke = TRUE, color = "black", fillColor = "white")
   })
   
-  # observeEvent(input$mymap_shape_click, { # update the location selectInput on map clicks
-  #   point_lat <- input$mymap_shape_click$lat
-  #   point_lon <- input$mymap_shape_click$lon
-  #   point_chosen <- SpatialPoints(matrix(c(point_lon,point_lat), nrow = 1))
-  #   crs(point_chosen) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
-  #   
-  #   filteredData_allYears_cell <- reactive({
-  #     over(point_chosen, filteredData_allYears())
-  #   })
-  # 
-  #   print(filteredData_allYears_cell())
-  # })
+  observeEvent(input$mymap_shape_click, { # update the location selectInput on map clicks
+
+    point_lat <- input$mymap_shape_click$lat
+    point_lon <- input$mymap_shape_click$lng
+
+    point_chosen <- SpatialPoints(matrix(c(point_lon,point_lat), nrow = 1))
+    crs(point_chosen) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+    filteredData_allYears_cell <- reactive({
+      over(point_chosen, df, returnList = TRUE) #filteredData_allYears() if want one intensity; use df if want both intensities
+    })
+
+    #print(filteredData_allYears_cell()$"1")
+    
+    cell_data <- as.data.frame(filteredData_allYears_cell()$"1")
+    
+    output$timeseries <- renderPlot({
+      ggplot(cell_data, aes(x = year, y = plant, col = intensity)) +
+                              geom_point(size = 3) +
+                              xlab("Year") +
+                              ylab("Day of Year") +
+                              geom_line(aes(x = year, y = onset), color = "darkblue") +
+                              theme_bw()
+    })
+    
+    print(as.data.frame(filteredData_SC_userYear())$plant)
+    
+    # histogram for ONE year, one histogram per intensity
+    output$histogram_SC <- renderPlot({
+      ggplot(as.data.frame(filteredData_SC_userYear()), aes(x = plant)) +
+        geom_histogram() +
+        geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"], 
+                   col = "darkgreen", size = 2) + # get plant date for specific year +
+        geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
+                   col = "darkblue", size = 2) + # get onset for specific year
+        geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"] + 60, y=100, 
+                  label="SC planting date at cell", color = "darkgreen") +
+        ggtitle(paste("Single cropped for", input$user_year)) +
+        theme_bw() +
+        xlim(0,250) +
+        ylim(0, 120)
+    })
+    
+    output$histogram_DC <- renderPlot({
+      ggplot(as.data.frame(filteredData_DC_userYear()), aes(x = plant)) +
+        geom_histogram() +
+        geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"], 
+                   col = "darkgreen", size = 2) + # get plant date for specific year +
+        geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
+                   col = "darkblue", size = 2) + # get onset for specific year
+        geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"] + 60, y=100, 
+                  label="DC planting date at cell", color = "darkgreen") +
+        ggtitle(paste("Double cropped for", input$user_year)) +
+        theme_bw() +
+        xlim(0,250) +
+        ylim(0,120)
+    })
+  })
 
   
   
   observe({
 
-    graph_popup <- function(cell_ID_value) {
-      print('cell_ID_value')
-      print(cell_ID_value)
-      cell_df <- as.data.frame(filteredData_allYears())[filteredData_allYears()$cell_ID == cell_ID_value,]
-      print(cell_df)
-      return(
-        ggplot(cell_df, aes(x = year, y = plant)) +
-                            geom_point(size = 1) +
-                            theme_bw()
-      )
-    }
+    # graph_popup <- ggplot(as.data.frame(filteredData_allYears()), aes(x = year, y = plant)) +
+    #                             geom_point(size = 1) +
+    #                             theme_bw()
+    # 
+    # graph_popup <- mget(rep("graph_popup", length(filteredData_allYears())))
+    # 
+    # clr <- rep("grey", length(filteredData_allYears()))
+    # graph_popoup <- lapply(1:length(graph_popup), function(i) {
+    #   clr[i] <- "red"
+    #   update(graph_popup[[i]], col = clr)
+    # })
     
-    #FOLLOW THIS https://stackoverflow.com/questions/32352539/plotting-barchart-in-popup-using-leaflet-library
+    # graph_popup <- function(cell_ID_value) {
+    #   cell_df <- as.data.frame(filteredData_allYears())[as.data.frame(filteredData_allYears())$cell_ID == cell_ID_value,]
+    # 
+    #   return(
+    #     ggplot(cell_df, aes(x = year, y = plant)) +
+    #                         geom_point(size = 1) +
+    #                         theme_bw()
+    #   )
+    # }
+
+    #graphs_list <- list(filteredData()$graph)
+    
+    
     
     leafletProxy("mymap", data = filteredData()) %>%
       clearShapes() %>%
@@ -122,12 +248,15 @@ server <- function(input, output) {
                   highlightOptions = highlightOptions(color = "white", weight = 2,
                                                       bringToFront = TRUE),
                   popup = paste("Plant: ", round(df$plant), " days after Aug 1 <br>", "Onset: ", df$onset, "days after Aug 1")
-                  #popup = (cell_ID <- df$cell_ID) #popupGraph(graph_popup(df$cell_ID))
+                  #popup = popupGraph(graphs_list) #(cell_ID <- df$cell_ID) # graph_popup(df$cell_ID)
       ) %>%
       addLegend("bottomright", pal = pal, values = ~plant,
                 title = "Planting date (DOY after Aug 1)",
                 opacity = 1
-      ) 
+      )
+    
+    #mapview(filteredData(), zcol = "plant", popup = popupGraph(graphs_list))
+    
     # dist <- 0.5
     # lng <- data()$long
     # lat <- data()$lat
