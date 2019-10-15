@@ -7,12 +7,15 @@ get_sampled_data <- function(full_data, plant_stat, grid_size, lat_offset, lon_o
   full_data$index <- 1:nrow(full_data) #unique row index to join later
   full_data_sp <- as(full_data, 'Spatial')
   
+
+  
   # generate regular grid of points
   samplePoints <- makegrid(MT_outline, cellsize = grid_size)
   samplePoints$x1 <- samplePoints$x1 + lon_offset
   samplePoints$x2 <- samplePoints$x2 + lat_offset
   samplePoints <- SpatialPoints(samplePoints, proj4string = CRS(proj4string(MT_outline)))
   
+
   # sampling only the desired 
   if(!agg_scheme) {
     # sample from grid of points, delete NA's
