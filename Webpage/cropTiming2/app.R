@@ -58,7 +58,7 @@ ui <- navbarPage("Crop Timing", id = "nav",
       #selectInput("user_year", "Year:", vars)
       sliderInput(inputId = "user_year", 
                     label = "Year",
-                    value = 2010, min = 2004, max = 2014, 
+                    value = 2014, min = 2004, max = 2014, 
       	            step = 1, round = TRUE, sep = '', ticks = FALSE),
       
       h6("Click a cell to view its planting and wet season onset trajectory."),
@@ -146,8 +146,153 @@ server <- function(input, output) {
       #addTiles() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
       addPolygons(data = MT_outline, weight = 2, stroke = TRUE, color = "black", fillColor = "white")
+    
+    
+    
   })
   
+  # observeEvent for slider change: this is repeat of the observeEvent for clicking a map but with dummy point
+  # if don't have this, when only change the user_year with slider, the plot will try to update but it 
+  # won't have the new year. if a cell that existed in 2014 but doesn't exist in 2004 is chosen, get error in plot
+  observeEvent(input$user_year, {
+    #print('slider changed')
+    
+    point_lat <- max(c(-80,input$mymap_shape_click$lat), na.rm = TRUE) # dummy point
+    point_lon <- max(c(-80,input$mymap_shape_click$lng), na.rm = TRUE)
+    
+    
+    point_chosen <- SpatialPoints(matrix(c(point_lon,point_lat), nrow = 1))
+    crs(point_chosen) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    
+    filteredData_allYears_cell <- reactive({
+      over(point_chosen, df, returnList = TRUE) #filteredData_allYears() if want one intensity; use df if want both intensities
+    })
+    
+    #print(filteredData_allYears_cell()$"1")
+    
+    cell_data <- as.data.frame(filteredData_allYears_cell()$"1")
+    #print('cell_data for all years')
+    #print(cell_data)
+    
+    if (nrow(cell_data) >= 1) {
+      output$timeseries <- renderPlot({
+        ggplot(cell_data, mapping = aes(x = year)) +
+          geom_point(mapping = aes(y = plant, col = intensity), size = 3) +
+          xlab("Year") +
+          ylab("Day of Year") +
+          geom_line(mapping = aes(y = onset, color = "zonset")) +
+          scale_color_manual(name = "", 
+                             labels = c("Double cropped", "Single cropped", "Wet season onset"),
+                             values = c("DC" = "darkgreen", "SC" = "green", "zonset" = "darkblue")) +
+          
+          ggtitle("Timeseries at chosen cell") +
+          theme_bw()
+      })
+    }
+    
+    if (nrow(cell_data) == 0) {
+      output$timeseries <- renderPlot({
+        ggplot(as.data.frame(filteredData_allYears()), mapping = aes(x = year)) +
+          geom_point(mapping = aes(y = plant, col = intensity), size = 3) +
+          xlab("Year") +
+          ylab("Day of Year") +
+          scale_color_manual(name = "", 
+                             labels = c("Double cropped", "Single cropped"),
+                             values = c("DC" = "darkgreen", "SC" = "green")) +
+          
+          ggtitle("Invalid cell chosen. Showing timeseries at all cells") +
+          theme_bw()
+      })
+    }
+    
+    #print(as.data.frame(filteredData_SC_userYear())$plant)
+    
+    # histogram for ONE year, one histogram per intensity
+    # if cell exists in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC",]) >= 1) {
+      
+      output$histogram_SC <- renderPlot({
+        ggplot(as.data.frame(filteredData_SC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"], 
+                     col = "darkgreen", size = 2) + # get plant date for specific year +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
+                     col = "darkblue", size = 2) + # get onset for specific year
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"] +50, y=120, 
+                    label="SC planting date \n at chosen cell", color = "darkgreen") +
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "onset"] - 40, y=120, 
+                    label="Wet season \n onset at \n chosen cell", color = "darkblue") +
+          ggtitle(paste("Single cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0, 130)
+      })
+    }
+    
+    # if cell doesn't exist in chosen year
+    #print('user year')
+    #user_year <- reactive(input$user_year)
+    #print(input$user_year)
+    #print('new cell_data to check')
+    #print(cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC",])
+    
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC",]) == 0) {
+      
+      
+      output$histogram_SC <- renderPlot({
+        ggplot(as.data.frame(filteredData_SC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          ggtitle(paste("Single cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0, 130)
+      })
+    }
+    
+    # if cell exists in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC",]) >= 1) {
+      output$histogram_DC <- renderPlot({
+        ggplot(as.data.frame(filteredData_DC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"], 
+                     col = "darkgreen", size = 2) + # get plant date for specific year +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
+                     col = "darkblue", size = 2) + # get onset for specific year
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"] + 50, y=120, 
+                    label="DC planting date \n at chosen cell", color = "darkgreen") +
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "onset"] - 40, y=120, 
+                    label= "Wet season \n onset at \n chosen cell", color = "darkblue") +
+          ggtitle(paste("Double cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0,130)
+      })
+    }
+    
+    # if cell doesn't exist in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC",]) == 0) {
+      output$histogram_DC <- renderPlot({
+        ggplot(as.data.frame(filteredData_DC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          ggtitle(paste("Double cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0,130)
+      })
+    }
+    
+    
+  })
+  
+  # observeEvent for map click
   observeEvent(input$mymap_shape_click, { # update the location selectInput on map clicks
 
     point_lat <- input$mymap_shape_click$lat
@@ -163,48 +308,119 @@ server <- function(input, output) {
     #print(filteredData_allYears_cell()$"1")
     
     cell_data <- as.data.frame(filteredData_allYears_cell()$"1")
+
     
-    output$timeseries <- renderPlot({
-      ggplot(cell_data, aes(x = year, y = plant, col = intensity)) +
-                              geom_point(size = 3) +
-                              xlab("Year") +
-                              ylab("Day of Year") +
-                              geom_line(aes(x = year, y = onset), color = "darkblue") +
-                              theme_bw()
-    })
+    if (nrow(cell_data) >= 1) {
+      output$timeseries <- renderPlot({
+        ggplot(cell_data, mapping = aes(x = year)) +
+                                geom_point(mapping = aes(y = plant, col = intensity), size = 3) +
+                                xlab("Year") +
+                                ylab("Day of Year") +
+                                geom_line(mapping = aes(y = onset, color = "zonset")) +
+                                scale_color_manual(name = "", 
+                                                   labels = c("Double cropped", "Single cropped", "Wet season onset"),
+                                                   values = c("DC" = "darkgreen", "SC" = "green", "zonset" = "darkblue")) +
+  
+                                ggtitle("Timeseries at chosen cell") +
+                                theme_bw()
+      })
+    }
+
+    if (nrow(cell_data) == 0) {
+      output$timeseries <- renderPlot({
+        ggplot(as.data.frame(filteredData_allYears()), mapping = aes(x = year)) +
+          geom_point(mapping = aes(y = plant, col = intensity), size = 3) +
+          xlab("Year") +
+          ylab("Day of Year") +
+          scale_color_manual(name = "", 
+                             labels = c("Double cropped", "Single cropped"),
+                             values = c("DC" = "darkgreen", "SC" = "green")) +
+          
+          ggtitle("Invalid cell chosen. Showing timeseries at all cells") +
+          theme_bw()
+      })
+    }
     
-    print(as.data.frame(filteredData_SC_userYear())$plant)
+    #print(as.data.frame(filteredData_SC_userYear())$plant)
     
     # histogram for ONE year, one histogram per intensity
-    output$histogram_SC <- renderPlot({
-      ggplot(as.data.frame(filteredData_SC_userYear()), aes(x = plant)) +
-        geom_histogram() +
-        geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"], 
-                   col = "darkgreen", size = 2) + # get plant date for specific year +
-        geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
-                   col = "darkblue", size = 2) + # get onset for specific year
-        geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"] + 60, y=100, 
-                  label="SC planting date at cell", color = "darkgreen") +
-        ggtitle(paste("Single cropped for", input$user_year)) +
-        theme_bw() +
-        xlim(0,250) +
-        ylim(0, 120)
-    })
+    # if cell exists in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC",]) >= 1) {
+      
+      
+      output$histogram_SC <- renderPlot({
+        ggplot(as.data.frame(filteredData_SC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"], 
+                     col = "darkgreen", size = 2) + # get plant date for specific year +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
+                     col = "darkblue", size = 2) + # get onset for specific year
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "plant"] +50, y=120, 
+                    label="SC planting date \n at chosen cell", color = "darkgreen") +
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC", "onset"] - 40, y=120, 
+                    label="Wet season \n onset at \n chosen cell", color = "darkblue") +
+          ggtitle(paste("Single cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0, 130)
+      })
+    }
     
-    output$histogram_DC <- renderPlot({
-      ggplot(as.data.frame(filteredData_DC_userYear()), aes(x = plant)) +
-        geom_histogram() +
-        geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"], 
-                   col = "darkgreen", size = 2) + # get plant date for specific year +
-        geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
-                   col = "darkblue", size = 2) + # get onset for specific year
-        geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"] + 60, y=100, 
-                  label="DC planting date at cell", color = "darkgreen") +
-        ggtitle(paste("Double cropped for", input$user_year)) +
-        theme_bw() +
-        xlim(0,250) +
-        ylim(0,120)
-    })
+    # if cell doesn't exist in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "SC",]) == 0) {
+      
+
+      output$histogram_SC <- renderPlot({
+        ggplot(as.data.frame(filteredData_SC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          ggtitle(paste("Single cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0, 130)
+      })
+    }
+    
+    # if cell exists in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC",]) >= 1) {
+      output$histogram_DC <- renderPlot({
+        ggplot(as.data.frame(filteredData_DC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"], 
+                     col = "darkgreen", size = 2) + # get plant date for specific year +
+          geom_vline(xintercept = cell_data[cell_data$year == input$user_year, "onset"], 
+                     col = "darkblue", size = 2) + # get onset for specific year
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "plant"] + 50, y=120, 
+                    label="DC planting date \n at chosen cell", color = "darkgreen") +
+          geom_text(x=cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC", "onset"] - 40, y=120, 
+                    label= "Wet season \n onset at \n chosen cell", color = "darkblue") +
+          ggtitle(paste("Double cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0,130)
+      })
+    }
+    
+    # if cell doesn't exist in chosen year
+    if (nrow(cell_data[cell_data$year == input$user_year & cell_data$intensity == "DC",]) == 0) {
+      output$histogram_DC <- renderPlot({
+        ggplot(as.data.frame(filteredData_DC_userYear()), aes(x = plant)) +
+          geom_histogram() +
+          ggtitle(paste("Double cropped for", input$user_year)) +
+          xlab("Planting date [days after Aug 1]") +
+          ylab("Histogram") +
+          theme_bw() +
+          xlim(-20,250) +
+          ylim(0,130)
+      })
+    }
+    
+    
   })
 
   
