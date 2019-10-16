@@ -14,6 +14,14 @@ library(spatialEco)
 
 df <- readRDS("./cell_spdf.rds")
 df <- df[df$plant_stat_type == "median", ] # show median planting date only
+to_download_csv <- as.data.frame(df) %>%
+  dplyr::select(-c("SC_delay", "DC_area_km", "label", "Muni_code", "SC_area_km",
+            "onset_rang", "DC_delay", "plant_stat_type", "cell_ID", "region", 
+            "year_index", "year_factor")) %>%
+  dplyr::rename(soy_area = soy_area_k)
+
+# writes out a shp file for download
+#writeOGR(obj=df, dsn="cell_data", layer="cell_data", driver="ESRI Shapefile")
 
 # TEST: filter stuff out
 #df <- df[df$intensity == "SC" &  df$year == 2010,]
@@ -37,6 +45,17 @@ vars <- c(
   "2006" = 2006,
   "2005" = 2005,
   "2004" = 2004
+)
+
+documentation_table <- data.frame(
+  Variable = c('year','plant', 'onset', 'intensity', 'soy_area', 'lon', 'lat'),
+  Description = c("Year of harvest (2014 refers to Aug 1, 2013 to July 31, 2014)",
+                  "Planting date [days after Aug 1]",
+                  "Wet season onset [days after Aug 1]",
+                  "Cropping intensity (SC = single cropped, DC = double cropped)",
+                  "Area of soy [square km]",
+                  "Longitude of cell center",
+                  "Latitude of cell center")
 )
 
 ###################################################################################################
@@ -81,37 +100,12 @@ ui <- navbarPage("Crop Timing", id = "nav",
   ), # end interactive map tab
   
   # how data created tab -----------------------------------------------------------------------
-  tabPanel("About this data")
+  tabPanel("Download Data",
+           tableOutput('documentation'),
+           downloadLink('data_csv', 'Download as CSV')
+           #,downloadLink('data_shp', 'Download as SHP')
+           )
 )
-
-###################################################################################################
-# CALCULATIONS
-###################################################################################################
-
-# save a list of plots per cell (using all data, df)
-# create_graph <- function(df_row) {
-#   
-#   
-#   cell_ID_value <- df_row["cell_ID"]
-#   
-#   #print('generating graph for cell')
-#   #print(cell_ID_value)
-#   
-#   # get all years corresponding to this cell
-#   cell_df <- as.data.frame(df)[as.data.frame(df)$cell_ID == cell_ID_value,]
-#    
-#   return(
-#       ggplot(cell_df, aes(x = year, y = plant, col = intensity)) +
-#                            geom_point(size = 1) +
-#                            geom_line(aes(x = year, y = onset), col = "blue") +
-#                            theme_bw()
-#      )
-# }
-
-# run this once for every time create_graph changes, then read in teh result
-#all_graphs_list <- apply(as.data.frame(df), MARGIN = 1, FUN = create_graph)
-#saveRDS(all_graphs_list, file = "all_graphs_list.rds")
-#df$graph <- all_graphs_list
 
 ###################################################################################################
 # SERVER
@@ -426,30 +420,6 @@ server <- function(input, output) {
   
   
   observe({
-
-    # graph_popup <- ggplot(as.data.frame(filteredData_allYears()), aes(x = year, y = plant)) +
-    #                             geom_point(size = 1) +
-    #                             theme_bw()
-    # 
-    # graph_popup <- mget(rep("graph_popup", length(filteredData_allYears())))
-    # 
-    # clr <- rep("grey", length(filteredData_allYears()))
-    # graph_popoup <- lapply(1:length(graph_popup), function(i) {
-    #   clr[i] <- "red"
-    #   update(graph_popup[[i]], col = clr)
-    # })
-    
-    # graph_popup <- function(cell_ID_value) {
-    #   cell_df <- as.data.frame(filteredData_allYears())[as.data.frame(filteredData_allYears())$cell_ID == cell_ID_value,]
-    # 
-    #   return(
-    #     ggplot(cell_df, aes(x = year, y = plant)) +
-    #                         geom_point(size = 1) +
-    #                         theme_bw()
-    #   )
-    # }
-
-    #graphs_list <- list(filteredData()$graph)
     
     
     
@@ -471,17 +441,65 @@ server <- function(input, output) {
                 opacity = 1
       )
     
-    #mapview(filteredData(), zcol = "plant", popup = popupGraph(graphs_list))
-    
-    # dist <- 0.5
-    # lng <- data()$long
-    # lat <- data()$lat
-    # 
-    # leafletProxy("map") %>%
-    #    fitBounds(lng - dist, lat - dist, lng + dist, lat + dist)
     })
 
+  output$documentation <- renderTable({
+    documentation_table
+  })
   
+  output$data_csv <- downloadHandler('data.csv',
+    content = function(file) {
+      write.csv(to_download_csv, file, row.names = FALSE)
+    }
+  )
+  
+  output$data_shp <- downloadHandler(
+    filename = 'cell_data.zip',
+    content = function(file) {
+      if (length(Sys.glob("cell_data.*"))>0){
+        file.remove(Sys.glob("cell_data.*"))
+      }
+      writeOGR(df, dsn="cell_data.shp", layer="cell_data", driver="ESRI Shapefile")
+      zip(zipfile='cell_data.zip', files=Sys.glob("cell_data.*"))
+      file.copy("cell_data.zip", file)
+      if (length(Sys.glob("cell_data.*"))>0){
+        file.remove(Sys.glob("cell_data.*"))
+      }
+    }
+  )
+  
+  # output$data_shp <- downloadHandler(
+  #   filename = "cell_data.zip",
+  #   content = function(file) {
+  #     data = df # I assume this is a reactive object
+  #     # create a temp folder for shp files
+  #     temp_shp <- tempdir()
+  #     # write shp files
+  #     writeOGR(data, temp_shp, "cell_data", "ESRI Shapefile",
+  #              overwrite_layer = TRUE)
+  #     # zip all the shp files
+  #     zip_file <- file.path(temp_shp, "cell_data_shp.zip")
+  #     shp_files <- list.files(temp_shp,
+  #                             "cell_data",
+  #                             full.names = TRUE)
+  #     # the following zip method works for me in linux but substitute with whatever method working in your OS
+  #     zip_command <- paste("zip -j",
+  #                          zip_file,
+  #                          paste(shp_files, collapse = " "))
+  #     system(zip_command)
+  #     # copy the zip file to the file argument
+  #     file.copy(zip_file, file)
+  #     # remove all the files created
+  #     file.remove(zip_file, shp_files)
+  #   }
+  # )
+  
+  # output$data_shp <- downloadHandler(
+  #   filename = "cell_data.zip",
+  #   content = function(file) {
+  #     writeOGR(obj=df, dsn="cell_data", layer="cell_data", driver="ESRI Shapefile")
+  #   }
+  # )
 }
 
 shinyApp(ui = ui, server = server)
