@@ -40,6 +40,8 @@ source('E:/R-code/Modeling/code/FCN_run_model_spatial_sampled.R')
 MT_outline <- readOGR(dsn = 'E:/R-code/Modeling/data/shp/MatoGrossoOutline', layer = 'MatoGrossoOutline')
 crs(MT_outline) <- CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
 
+onset_type <- 'Gabriel_onset'
+
 median_cell_raw <- read.csv('E:/R-code/Modeling/data/median_onset_cell_v2.csv')
 percentile5_cell_raw <- read.csv('E:/R-code/Modeling/data/percentile5_onset_cell_v2.csv')
 percentile95_cell_raw <- read.csv('E:/R-code/Modeling/data/percentile95_onset_cell_v2.csv')
@@ -103,6 +105,18 @@ cell_sf_tidy$year_factor <- as.factor(cell_sf_tidy$year)
 cell_sf_tidy <- cell_sf_tidy %>%  drop_na
 cell_sf_tidy$delay <- cell_sf_tidy$plant - cell_sf_tidy$onset
 
+# plotting
+year <- 2013
+cell_year <- cell_sf_tidy[cell_sf_tidy$year == year, ]
+  
+onset_map <- ggplot(cell_year) +
+  geom_sf(aes(fill = onset)) +
+  scale_fill_viridis() +
+  ggtitle(paste("Onset for spatial sampling", year, 'Gabriel onset')) +
+  geom_polygon(data = MT_outline, aes(x = long, y = lat), color = "black", alpha = 0, linetype = 1) +
+  theme_bw()
+
+print(onset_map)
 ```
 
 
